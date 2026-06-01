@@ -8,11 +8,10 @@ abstract class VideoPlayerEvent extends Equatable {
 }
 
 class InitializeVideo extends VideoPlayerEvent {
-  final String videoPath;
-  const InitializeVideo(this.videoPath);
+  const InitializeVideo();
 
   @override
-  List<Object?> get props => [videoPath];
+  List<Object> get props => [];
 }
 
 class PlayVideo extends VideoPlayerEvent {

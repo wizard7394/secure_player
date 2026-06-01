@@ -1,54 +1,42 @@
-// The original content is temporarily commented out to allow generating a self-contained demo - feel free to uncomment later.
-
-// import 'package:flutter/material.dart';
-// import 'features/player/presentation/screens/secure_player_screen.dart';
-//
-// void main() {
-//   WidgetsFlutterBinding.ensureInitialized();
-//   runApp(const SecurePlayerApp());
-// }
-//
-// class SecurePlayerApp extends StatelessWidget {
-//   const SecurePlayerApp({super.key});
-//
-//   @override
-//   Widget build(BuildContext context) {
-//     return MaterialApp(
-//       title: 'Secure Video Player',
-//       debugShowCheckedModeBanner: false,
-//       theme: ThemeData(
-//         scaffoldBackgroundColor: const Color(0xFF0A0A0A),
-//         useMaterial3: true,
-//       ),
-//       home: const SecurePlayerScreen(),
-//     );
-//   }
-// }
-//
-
 import 'package:flutter/material.dart';
-import 'package:secure_player/src/rust/api/simple.dart';
-import 'package:secure_player/src/rust/frb_generated.dart';
+import 'package:secure_player/features/auth_license/presentation/screens/login_screen.dart';
+// import 'features/player/presentation/screens/secure_player_screen.dart';
+import 'src/rust/frb_generated.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:window_manager/window_manager.dart';
 
 Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  MediaKit.ensureInitialized();
   await RustLib.init();
-  runApp(const MyApp());
+
+  await windowManager.ensureInitialized();
+  WindowOptions windowOptions = const WindowOptions(
+    center: true,
+    skipTaskbar: false,
+  );
+  windowManager.waitUntilReadyToShow(windowOptions, () async {
+    await windowManager.show();
+    await windowManager.focus();
+  });
+
+  runApp(const SecurePlayerApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class SecurePlayerApp extends StatelessWidget {
+  const SecurePlayerApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      home: Scaffold(
-        appBar: AppBar(title: const Text('flutter_rust_bridge quickstart')),
-        body: Center(
-          child: Text(
-            'Action: Call Rust `greet("Tom")`\nResult: `${greet(name: "Tom")}`',
-          ),
-        ),
+      title: 'Secure Video Player',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        scaffoldBackgroundColor: const Color(0xFF0A0A0A),
+        useMaterial3: true,
       ),
+      home: const LoginScreen(),
     );
   }
 }

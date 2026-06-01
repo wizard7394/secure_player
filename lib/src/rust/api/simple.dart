@@ -6,5 +6,17 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-String greet({required String name}) =>
-    RustLib.instance.api.crateApiSimpleGreet(name: name);
+// These functions are ignored because they are not marked as `pub`: `stream_handler`
+// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `PlayerState`
+
+Future<String> startProxyServer({
+  required int port,
+  required String filePath,
+  required List<int> aesKey,
+  required List<int> aesIv,
+}) => RustLib.instance.api.crateApiSimpleStartProxyServer(
+  port: port,
+  filePath: filePath,
+  aesKey: aesKey,
+  aesIv: aesIv,
+);

@@ -922,9 +922,11 @@ version = "0.1.0"
 dependencies = [
  "aes-gcm",
  "axum",
+ "bytes",
  "flutter_rust_bridge",
  "lazy_static",
  "tokio",
+ "tokio-stream",
  "tower-http",
 ]
 
@@ -1110,6 +1112,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "tokio-stream"
+version = "0.1.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32da49809aab5c3bc678af03902d4ccddea2a87d028d86392a4b1560c6906c70"
+dependencies = [
+ "futures-core",
+ "pin-project-lite",
+ "tokio",
 ]
 
 [[package]]
