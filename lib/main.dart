@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:secure_player/features/auth_license/presentation/screens/login_screen.dart';
-// import 'features/player/presentation/screens/secure_player_screen.dart';
 import 'src/rust/frb_generated.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:window_manager/window_manager.dart';
 
+import 'core/di/injection_container.dart' as di;
+import 'features/auth_license/presentation/bloc/auth_bloc.dart';
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  await di.init();
 
   MediaKit.ensureInitialized();
   await RustLib.init();
@@ -36,7 +41,10 @@ class SecurePlayerApp extends StatelessWidget {
         scaffoldBackgroundColor: const Color(0xFF0A0A0A),
         useMaterial3: true,
       ),
-      home: const LoginScreen(),
+      home: BlocProvider(
+        create: (_) => di.sl<AuthBloc>(),
+        child: const LoginScreen(),
+      ),
     );
   }
 }

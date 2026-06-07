@@ -1,75 +1,88 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:equatable/equatable.dart';
+import '../../../../core/network/api_client.dart';
 
-abstract class AuthEvent {}
-
-class SubmitPhoneNumber extends AuthEvent {
-  final String phoneNumber;
-  SubmitPhoneNumber(this.phoneNumber);
+abstract class AuthEvent extends Equatable {
+  const AuthEvent();
+  @override
+  List<Object> get props => [];
 }
 
-class SubmitVerificationCode extends AuthEvent {
+class RequestOtpEvent extends AuthEvent {
+  final String phone;
+  const RequestOtpEvent({required this.phone});
+  @override
+  List<Object> get props => [phone];
+}
+
+class VerifyOtpEvent extends AuthEvent {
+  final String phone;
   final String code;
-  SubmitVerificationCode(this.code);
+  const VerifyOtpEvent({required this.phone, required this.code});
+  @override
+  List<Object> get props => [phone, code];
 }
 
-class ResetToPhoneInput extends AuthEvent {}
+class ResetAuthEvent extends AuthEvent {}
 
-class ResendVerificationCode extends AuthEvent {
-  final String phoneNumber;
-  ResendVerificationCode(this.phoneNumber);
+abstract class AuthState extends Equatable {
+  const AuthState();
+  @override
+  List<Object> get props => [];
 }
-
-abstract class AuthState {}
 
 class AuthInitial extends AuthState {}
 
 class AuthLoading extends AuthState {}
 
-class AuthCodeSent extends AuthState {
-  final String phoneNumber;
-  AuthCodeSent(this.phoneNumber);
-}
+class OtpSentState extends AuthState {}
 
-class AuthSuccess extends AuthState {
+class AuthAuthenticated extends AuthState {
   final String token;
-  AuthSuccess(this.token);
+  const AuthAuthenticated({required this.token});
+  @override
+  List<Object> get props => [token];
 }
 
-class AuthFailure extends AuthState {
-  final String errorDetails;
-  AuthFailure(this.errorDetails);
+class AuthError extends AuthState {
+  final String message;
+  const AuthError({required this.message});
+  @override
+  List<Object> get props => [message];
 }
 
 class AuthBloc extends Bloc<AuthEvent, AuthState> {
-  String _currentPhoneNumber = "";
+  final ApiClient apiClient;
 
-  AuthBloc() : super(AuthInitial()) {
-    on<SubmitPhoneNumber>((event, emit) async {
-      _currentPhoneNumber = event.phoneNumber;
-      emit(AuthLoading());
-      await Future.delayed(const Duration(seconds: 2));
-      emit(AuthCodeSent(_currentPhoneNumber));
-    });
+  AuthBloc({required this.apiClient}) : super(AuthInitial()) {
+    on<RequestOtpEvent>(_onRequestOtp);
+    on<VerifyOtpEvent>(_onVerifyOtp);
+    on<ResetAuthEvent>((event, emit) => emit(AuthInitial()));
+  }
 
-    on<SubmitVerificationCode>((event, emit) async {
-      emit(AuthLoading());
-      await Future.delayed(const Duration(seconds: 2));
-      if (event.code == "12345") {
-        emit(AuthSuccess("SIMULATED_JWT_TOKEN_FROM_FASTAPI"));
-      } else {
-        emit(AuthFailure("Invalid verification code."));
-        emit(AuthCodeSent(_currentPhoneNumber));
-      }
-    });
+  Future<void> _onRequestOtp(
+    RequestOtpEvent event,
+    Emitter<AuthState> emit,
+  ) async {
+    emit(AuthLoading());
+    try {
+      await apiClient.requestOtp(event.phone);
+      emit(OtpSentState());
+    } catch (e) {
+      emit(AuthError(message: e.toString()));
+    }
+  }
 
-    on<ResetToPhoneInput>((event, emit) {
-      emit(AuthInitial());
-    });
-
-    on<ResendVerificationCode>((event, emit) async {
-      emit(AuthLoading());
-      await Future.delayed(const Duration(seconds: 2));
-      emit(AuthCodeSent(_currentPhoneNumber));
-    });
+  Future<void> _onVerifyOtp(
+    VerifyOtpEvent event,
+    Emitter<AuthState> emit,
+  ) async {
+    emit(AuthLoading());
+    try {
+      final token = await apiClient.verifyOtp(event.phone, event.code);
+      emit(AuthAuthenticated(token: token));
+    } catch (e) {
+      emit(AuthError(message: e.toString()));
+    }
   }
 }

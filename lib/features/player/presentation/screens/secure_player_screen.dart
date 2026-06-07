@@ -11,22 +11,26 @@ import '../../../security_overlay/presentation/bloc/watermark_bloc.dart';
 import '../../../security_overlay/presentation/widgets/security_overlay_view.dart';
 
 class SecurePlayerScreen extends StatelessWidget {
-  const SecurePlayerScreen({super.key});
+  final String courseId;
+  final String licenseKey;
+
+  const SecurePlayerScreen({
+    super.key,
+    required this.courseId,
+    required this.licenseKey,
+  });
 
   @override
   Widget build(BuildContext context) {
     return MultiBlocProvider(
       providers: [
         BlocProvider(
-          create: (context) => VideoPlayerBloc()..add(const InitializeVideo()),
+          create: (context) => VideoPlayerBloc()
+            ..add(InitializeVideo(courseId: courseId, licenseKey: licenseKey)),
         ),
         BlocProvider(
-          create: (context) => WatermarkBloc()
-            ..add(
-              FetchWatermarkData(
-                "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJsaWNlbnNlX2lkIjoxLCJkZXZpY2VfaGFzaCI6ImR1bW15X2hhc2hfMTIzNDU2Nzg5IiwiZXhwIjoxNzgwNzg1NDczfQ.3SGXG0QR5PRguysMMjt3lR1F9qBJujVHhgL88iLerqg",
-              ),
-            ),
+          create: (context) =>
+              WatermarkBloc()..add(FetchWatermarkData(licenseKey)),
         ),
       ],
       child: const Scaffold(
@@ -131,9 +135,33 @@ class _RustStreamPlayerState extends State<RustStreamPlayer> {
             child: AnimatedOpacity(
               opacity: _showControls ? 1.0 : 0.0,
               duration: const Duration(milliseconds: 300),
-              child: Align(
-                alignment: Alignment.bottomCenter,
-                child: CustomPlayerControls(player: player),
+              child: Stack(
+                children: [
+                  Align(
+                    alignment: Alignment.bottomCenter,
+                    child: CustomPlayerControls(player: player),
+                  ),
+                  Positioned(
+                    top: 30,
+                    left: 30,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.5),
+                        borderRadius: BorderRadius.circular(12.0),
+                      ),
+                      child: IconButton(
+                        icon: const Icon(
+                          Icons.arrow_back_ios_new_rounded,
+                          color: Colors.white,
+                          size: 24,
+                        ),
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                        },
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -218,7 +246,7 @@ class _CustomPlayerControlsState extends State<CustomPlayerControls> {
                             thumbColor: const Color(0xFF00E676),
                             overlayColor: const Color(
                               0xFF00E676,
-                            ).withValues(alpha: 0.2),
+                            ).withOpacity(0.2),
                             trackHeight: 3.0,
                             thumbShape: const RoundSliderThumbShape(
                               enabledThumbRadius: 6.0,

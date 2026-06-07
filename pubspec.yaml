@@ -45,6 +45,10 @@ dependencies:
   media_kit_video: ^2.0.1
   media_kit_libs_video: ^1.0.7
   window_manager: ^0.5.1
+  flutter_secure_storage: ^10.3.1
+  device_info_plus: ^13.1.0
+  crypto: ^3.0.7
+  encrypt: ^5.0.3
 
 dev_dependencies:
   flutter_test:

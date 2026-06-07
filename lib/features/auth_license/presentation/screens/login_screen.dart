@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:secure_player/features/auth_license/presentation/bloc/auth_bloc.dart';
 import 'package:secure_player/features/dashboard/presentation/screens/dashboard_screen.dart';
@@ -9,12 +10,9 @@ class LoginScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider(
-      create: (context) => AuthBloc(),
-      child: const Scaffold(
-        backgroundColor: Color(0xFF050505),
-        body: Center(child: SingleChildScrollView(child: AuthFormContainer())),
-      ),
+    return const Scaffold(
+      backgroundColor: Color(0xFF050505),
+      body: Center(child: SingleChildScrollView(child: AuthFormContainer())),
     );
   }
 }
@@ -63,6 +61,18 @@ class _AuthFormContainerState extends State<AuthFormContainer> {
     return "$m:$s";
   }
 
+  String _getCleanErrorMessage(String rawMessage) {
+    final lowerRaw = rawMessage.toLowerCase();
+    if (lowerRaw.contains('invalid')) return 'Invalid Verification Code!';
+    if (lowerRaw.contains('expired')) {
+      return 'Code expired. Please request a new one.';
+    }
+    if (lowerRaw.contains('not found')) {
+      return 'No account found for this number.';
+    }
+    return 'Authentication Failed. Try again.';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -82,24 +92,51 @@ class _AuthFormContainerState extends State<AuthFormContainer> {
       ),
       child: BlocConsumer<AuthBloc, AuthState>(
         listener: (context, state) {
-          if (state is AuthCodeSent) {
+          if (state is OtpSentState) {
             _codeController.clear();
             if (_timer == null || !_timer!.isActive) {
               _startTimer();
             }
           } else if (state is AuthInitial) {
             _timer?.cancel();
-          } else if (state is AuthFailure) {
+          } else if (state is AuthError) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text(
-                  state.errorDetails,
-                  style: const TextStyle(fontFamily: 'monospace'),
+                content: Row(
+                  children: [
+                    const Icon(
+                      Icons.warning_amber_rounded,
+                      color: Colors.white,
+                      size: 24,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        _getCleanErrorMessage(state.message),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                backgroundColor: Colors.redAccent,
+                backgroundColor: const Color(0xFFD32F2F),
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10.0),
+                ),
+                margin: const EdgeInsets.only(bottom: 40, left: 20, right: 20),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 16,
+                ),
+                elevation: 10,
               ),
             );
-          } else if (state is AuthSuccess) {
+          } else if (state is AuthAuthenticated) {
             _timer?.cancel();
             Navigator.of(context).pushReplacement(
               MaterialPageRoute(builder: (_) => const DashboardScreen()),
@@ -107,7 +144,15 @@ class _AuthFormContainerState extends State<AuthFormContainer> {
           }
         },
         builder: (context, state) {
-          bool isCodeMode = state is AuthCodeSent || state is AuthFailure;
+          bool isCodeMode = state is OtpSentState || state is AuthError;
+
+          // بررسی اینکه آیا دکمه باید روشن باشد یا خاموش
+          bool isButtonDisabled = state is AuthLoading;
+          if (isCodeMode && _codeController.text.length != 7) {
+            isButtonDisabled = true;
+          } else if (!isCodeMode && _phoneController.text.length < 10) {
+            isButtonDisabled = true;
+          }
 
           return Stack(
             children: [
@@ -121,7 +166,7 @@ class _AuthFormContainerState extends State<AuthFormContainer> {
                       color: Colors.white54,
                     ),
                     onPressed: () {
-                      context.read<AuthBloc>().add(ResetToPhoneInput());
+                      context.read<AuthBloc>().add(ResetAuthEvent());
                     },
                   ),
                 ),
@@ -145,7 +190,7 @@ class _AuthFormContainerState extends State<AuthFormContainer> {
                   Center(
                     child: Text(
                       isCodeMode
-                          ? "Enter the code sent to your device"
+                          ? "Enter the 7-digit code sent to your device"
                           : "Enter your registered mobile number",
                       style: const TextStyle(
                         color: Colors.white30,
@@ -159,6 +204,14 @@ class _AuthFormContainerState extends State<AuthFormContainer> {
                   TextField(
                     controller: isCodeMode ? _codeController : _phoneController,
                     keyboardType: TextInputType.number,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(isCodeMode ? 7 : 15),
+                    ],
+                    onChanged: (value) {
+                      // آپدیت کردن استیت برای ارزیابی مجدد فعال/غیرفعال بودن دکمه
+                      setState(() {});
+                    },
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 18,
@@ -168,7 +221,7 @@ class _AuthFormContainerState extends State<AuthFormContainer> {
                     decoration: InputDecoration(
                       filled: true,
                       fillColor: const Color(0xFF141414),
-                      hintText: isCodeMode ? "X X X X X" : "09...",
+                      hintText: isCodeMode ? "- - - - - - -" : "09...",
                       hintStyle: const TextStyle(
                         color: Colors.white12,
                         letterSpacing: 4.0,
@@ -210,8 +263,8 @@ class _AuthFormContainerState extends State<AuthFormContainer> {
                                     ? null
                                     : () {
                                         context.read<AuthBloc>().add(
-                                          ResendVerificationCode(
-                                            _phoneController.text,
+                                          RequestOtpEvent(
+                                            phone: _phoneController.text,
                                           ),
                                         );
                                       },
@@ -238,21 +291,26 @@ class _AuthFormContainerState extends State<AuthFormContainer> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF00E676),
                         foregroundColor: Colors.black,
+                        disabledBackgroundColor: const Color(0xFF141414),
+                        disabledForegroundColor: Colors.white24,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8.0),
                         ),
                         elevation: 0,
                       ),
-                      onPressed: state is AuthLoading
+                      onPressed: isButtonDisabled
                           ? null
                           : () {
                               if (isCodeMode) {
                                 context.read<AuthBloc>().add(
-                                  SubmitVerificationCode(_codeController.text),
+                                  VerifyOtpEvent(
+                                    phone: _phoneController.text,
+                                    code: _codeController.text,
+                                  ),
                                 );
                               } else {
                                 context.read<AuthBloc>().add(
-                                  SubmitPhoneNumber(_phoneController.text),
+                                  RequestOtpEvent(phone: _phoneController.text),
                                 );
                               }
                             },
@@ -261,7 +319,7 @@ class _AuthFormContainerState extends State<AuthFormContainer> {
                               width: 24,
                               height: 24,
                               child: CircularProgressIndicator(
-                                color: Colors.black,
+                                color: Colors.white54,
                                 strokeWidth: 2.5,
                               ),
                             )
