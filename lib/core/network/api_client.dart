@@ -36,13 +36,18 @@ class ApiClient {
   }
 
   Future<void> requestOtp(String phone) async {
-    await _dio.post('/auth/request-otp', data: {'phone': phone});
+    try {
+      await _dio.post('/auth/request-otp', data: {'phone_number': phone});
+    } on DioException catch (e) {
+      print("DEBUG: API Error: ${e.response?.data}"); // این خیلی مهمه
+      rethrow;
+    }
   }
 
   Future<String> verifyOtp(String phone, String code) async {
     final response = await _dio.post(
       '/auth/verify-otp',
-      data: {'phone': phone, 'code': code},
+      data: {'phone_number': phone, 'code': code},
     );
 
     final token = response.data['access_token'];

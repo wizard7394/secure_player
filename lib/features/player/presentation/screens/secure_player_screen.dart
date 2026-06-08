@@ -46,31 +46,23 @@ class PlayerViewContainer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      height: double.infinity,
-      decoration: const BoxDecoration(color: Colors.black),
-      clipBehavior: Clip.antiAlias,
-      child: BlocBuilder<VideoPlayerBloc, VideoPlayerState>(
-        builder: (context, state) {
-          if (state is VideoPlayerLoading) {
-            return const Center(
-              child: CircularProgressIndicator(color: Color(0xFF00E676)),
-            );
-          }
-
-          if (state is VideoPlayerReady) {
-            return RustStreamPlayer(state: state);
-          }
-
+    return BlocBuilder<VideoPlayerBloc, VideoPlayerState>(
+      builder: (context, state) {
+        if (state is VideoPlayerLoading) {
           return const Center(
-            child: Text(
-              "ENGINE DISCONNECTED",
-              style: TextStyle(color: Colors.white30, letterSpacing: 2.0),
-            ),
+            child: CircularProgressIndicator(color: Color(0xFF00E676)),
           );
-        },
-      ),
+        }
+        if (state is VideoPlayerReady) {
+          return RustStreamPlayer(state: state);
+        }
+        return const Center(
+          child: Text(
+            "ENGINE DISCONNECTED",
+            style: TextStyle(color: Colors.white30),
+          ),
+        );
+      },
     );
   }
 }
@@ -91,45 +83,32 @@ class _RustStreamPlayerState extends State<RustStreamPlayer> {
   @override
   void initState() {
     super.initState();
-    player = Player(
-      configuration: const PlayerConfiguration(bufferSize: 32 * 1024 * 1024),
-    );
+    player = Player(configuration: const PlayerConfiguration());
     controller = VideoController(player);
+    // استفاده از پورت داینامیک یا اطمینان از باز کردن مجدد
     player.open(Media('http://127.0.0.1:8080/stream'));
-    player.play();
   }
 
   @override
   void dispose() {
+    // پلیر رو متوقف و منابعش رو آزاد می‌کنیم
+    player.stop();
     player.dispose();
+    // نیازی به controller.dispose() نیست
     super.dispose();
-  }
-
-  void _onPointerEnter(PointerEvent details) {
-    setState(() {
-      _showControls = true;
-    });
-  }
-
-  void _onPointerExit(PointerEvent details) {
-    setState(() {
-      _showControls = false;
-    });
   }
 
   @override
   Widget build(BuildContext context) {
     return MouseRegion(
-      onEnter: _onPointerEnter,
-      onExit: _onPointerExit,
+      onEnter: (_) => setState(() => _showControls = true),
+      onExit: (_) => setState(() => _showControls = false),
       child: Stack(
         children: [
           Positioned.fill(
             child: Video(controller: controller, controls: NoVideoControls),
           ),
-
           const Positioned.fill(child: SecurityOverlayView()),
-
           IgnorePointer(
             ignoring: !_showControls,
             child: AnimatedOpacity(
@@ -147,17 +126,14 @@ class _RustStreamPlayerState extends State<RustStreamPlayer> {
                     child: Container(
                       decoration: BoxDecoration(
                         color: Colors.black.withValues(alpha: 0.5),
-                        borderRadius: BorderRadius.circular(12.0),
+                        borderRadius: BorderRadius.circular(12),
                       ),
                       child: IconButton(
                         icon: const Icon(
                           Icons.arrow_back_ios_new_rounded,
                           color: Colors.white,
-                          size: 24,
                         ),
-                        onPressed: () {
-                          Navigator.of(context).pop();
-                        },
+                        onPressed: () => Navigator.of(context).pop(),
                       ),
                     ),
                   ),

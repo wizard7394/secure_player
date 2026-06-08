@@ -1,11 +1,10 @@
 use axum::{
-    extract::State,
     http::{header, HeaderMap, StatusCode, Response},
     routing::get,
     Router,
     body::Body,
 };
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
 use tokio::fs::File;
@@ -27,36 +26,54 @@ pub struct PlayerState {
     pub aes_iv: Vec<u8>,
 }
 
+static GLOBAL_STATE: OnceLock<Arc<Mutex<PlayerState>>> = OnceLock::new();
+
+fn get_state() -> Arc<Mutex<PlayerState>> {
+    GLOBAL_STATE.get_or_init(|| {
+        Arc::new(Mutex::new(PlayerState {
+            file_path: String::new(),
+            aes_key: Vec::new(),
+            aes_iv: Vec::new(),
+        }))
+    }).clone()
+}
+
 pub async fn start_proxy_server(
     port: u16,
     file_path: String,
     aes_key: Vec<u8>,
     aes_iv: Vec<u8>,
 ) -> String {
-    let shared_state = Arc::new(Mutex::new(PlayerState {
-        file_path,
-        aes_key,
-        aes_iv,
-    }));
-
-    let app = Router::new()
-        .route("/stream", get(stream_handler))
-        .with_state(shared_state);
+    let state = get_state();
+    {
+        let mut lock = state.lock().await;
+        lock.file_path = file_path;
+        lock.aes_key = aes_key;
+        lock.aes_iv = aes_iv;
+    }
 
     let addr = format!("127.0.0.1:{}", port);
-    let listener = TcpListener::bind(&addr).await.expect("Failed to bind port");
-
-    tokio::spawn(async move {
-        axum::serve(listener, app).await.unwrap();
-    });
+    
+    match TcpListener::bind(&addr).await {
+        Ok(listener) => {
+            let app = Router::new().route("/stream", get(stream_handler));
+            tokio::spawn(async move {
+                let _ = axum::serve(listener, app).await;
+            });
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
+            println!("Proxy server is already running on {}. State updated.", addr);
+        }
+        Err(e) => {
+            eprintln!("Failed to bind port: {}", e);
+        }
+    }
 
     format!("http://{}/stream", addr)
 }
 
-async fn stream_handler(
-    State(state): State<Arc<Mutex<PlayerState>>>,
-    headers: HeaderMap,
-) -> Response<Body> {
+async fn stream_handler(headers: HeaderMap) -> Response<Body> {
+    let state = get_state();
     let state_lock = state.lock().await;
     let file_path = state_lock.file_path.clone();
     let aes_key = state_lock.aes_key.clone();
@@ -68,12 +85,10 @@ async fn stream_handler(
         Err(_) => return Response::builder().status(StatusCode::NOT_FOUND).body(Body::empty()).unwrap(),
     };
     
-    // محاسبه دقیق سایز فایل خام برای هدرهای شبکه
     let encrypted_size = file_meta.len();
     let num_chunks = (encrypted_size + ENCRYPTED_CHUNK_SIZE as u64 - 1) / ENCRYPTED_CHUNK_SIZE as u64;
     let decrypted_size = encrypted_size - (num_chunks * 16);
 
-    // بررسی درخواست Seek (Range) از طرف مدیاکیت
     let mut start_byte = 0u64;
     let mut end_byte = decrypted_size - 1;
     let mut is_partial = false;
@@ -117,7 +132,6 @@ async fn stream_handler(
             Err(_) => return,
         };
 
-        // پیدا کردن دقیق چانکی که مدیاکیت درخواست داده
         let start_chunk = (start_byte / CHUNK_SIZE as u64) as u32;
         let start_offset_in_chunk = (start_byte % CHUNK_SIZE as u64) as usize;
 
