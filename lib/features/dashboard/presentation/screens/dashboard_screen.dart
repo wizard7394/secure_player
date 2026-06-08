@@ -127,12 +127,19 @@ class CourseCardWidget extends StatelessWidget {
           hoverColor: Colors.white.withValues(alpha: 0.02),
           onTap: () {
             Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => CourseDetailScreen(
-                  courseId: course['id'].toString(),
-                  licenseKey: course['license_key'].toString(),
-                  courseTitle: course['title'].toString(),
-                ),
+              PageRouteBuilder(
+                transitionDuration: const Duration(milliseconds: 150),
+                reverseTransitionDuration: const Duration(milliseconds: 150),
+                pageBuilder: (context, animation, secondaryAnimation) =>
+                    CourseDetailScreen(
+                      courseId: course['id'].toString(),
+                      licenseKey: course['license_key'].toString(),
+                      courseTitle: course['title'].toString(),
+                    ),
+                transitionsBuilder:
+                    (context, animation, secondaryAnimation, child) {
+                      return FadeTransition(opacity: animation, child: child);
+                    },
               ),
             );
           },

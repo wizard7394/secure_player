@@ -146,7 +146,7 @@ class _RustStreamPlayerState extends State<RustStreamPlayer> {
                     left: 30,
                     child: Container(
                       decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.5),
+                        color: Colors.black.withValues(alpha: 0.5),
                         borderRadius: BorderRadius.circular(12.0),
                       ),
                       child: IconButton(
@@ -246,7 +246,7 @@ class _CustomPlayerControlsState extends State<CustomPlayerControls> {
                             thumbColor: const Color(0xFF00E676),
                             overlayColor: const Color(
                               0xFF00E676,
-                            ).withOpacity(0.2),
+                            ).withValues(alpha: 0.2),
                             trackHeight: 3.0,
                             thumbShape: const RoundSliderThumbShape(
                               enabledThumbRadius: 6.0,

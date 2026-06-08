@@ -137,7 +137,7 @@ class _CourseDetailSplitViewState extends State<CourseDetailSplitView> {
                         ),
                         decoration: BoxDecoration(
                           color: isSelected
-                              ? const Color(0xFF00E676).withOpacity(0.08)
+                              ? const Color(0xFF00E676).withValues(alpha: 0.08)
                               : Colors.transparent,
                           border: Border(
                             left: BorderSide(
@@ -184,14 +184,34 @@ class _CourseDetailSplitViewState extends State<CourseDetailSplitView> {
                         color: Colors.transparent,
                         child: InkWell(
                           borderRadius: BorderRadius.circular(12.0),
-                          hoverColor: Colors.white.withOpacity(0.02),
+                          hoverColor: Colors.white.withValues(alpha: 0.02),
                           onTap: () {
                             Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => SecurePlayerScreen(
-                                  courseId: widget.courseId,
-                                  licenseKey: widget.licenseKey,
+                              PageRouteBuilder(
+                                transitionDuration: const Duration(
+                                  milliseconds: 150,
                                 ),
+                                reverseTransitionDuration: const Duration(
+                                  milliseconds: 150,
+                                ),
+                                pageBuilder:
+                                    (context, animation, secondaryAnimation) =>
+                                        SecurePlayerScreen(
+                                          courseId: widget.courseId,
+                                          licenseKey: widget.licenseKey,
+                                        ),
+                                transitionsBuilder:
+                                    (
+                                      context,
+                                      animation,
+                                      secondaryAnimation,
+                                      child,
+                                    ) {
+                                      return FadeTransition(
+                                        opacity: animation,
+                                        child: child,
+                                      );
+                                    },
                               ),
                             );
                           },
@@ -204,7 +224,7 @@ class _CourseDetailSplitViewState extends State<CourseDetailSplitView> {
                                   decoration: BoxDecoration(
                                     color: const Color(
                                       0xFF00E676,
-                                    ).withOpacity(0.1),
+                                    ).withValues(alpha: 0.1),
                                     shape: BoxShape.circle,
                                   ),
                                   child: const Icon(

@@ -38,8 +38,10 @@ class SecurePlayerApp extends StatelessWidget {
       title: 'Secure Video Player',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        scaffoldBackgroundColor: const Color(0xFF0A0A0A),
-        useMaterial3: true,
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: const Color(0xFF050505),
+        canvasColor: const Color(0xFF050505),
+        dialogTheme: const DialogThemeData(backgroundColor: Color(0xFF0D0D0D)),
       ),
       home: BlocProvider(
         create: (_) => di.sl<AuthBloc>(),
