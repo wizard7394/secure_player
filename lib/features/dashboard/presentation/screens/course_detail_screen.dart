@@ -1,289 +1,210 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:secure_player/features/dashboard/presentation/bloc/course_detail_bloc.dart';
-import 'package:secure_player/features/player/presentation/screens/secure_player_screen.dart';
-import 'package:secure_player/core/di/injection_container.dart' as di;
+import '../../../../core/di/injection_container.dart';
+import '../bloc/course_detail_bloc.dart';
+import '../../../player/presentation/screens/secure_player_screen.dart';
 
 class CourseDetailScreen extends StatelessWidget {
   final String courseId;
-  final String licenseKey;
-  final String courseTitle;
 
-  const CourseDetailScreen({
-    super.key,
-    required this.courseId,
-    required this.licenseKey,
-    required this.courseTitle,
-  });
+  const CourseDetailScreen({super.key, required this.courseId});
 
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
-      create: (_) =>
-          di.sl<CourseDetailBloc>()..add(FetchCourseContentEvent(courseId)),
+      create: (context) =>
+          sl<CourseDetailBloc>()..add(FetchCourseDetail(int.parse(courseId))),
       child: Scaffold(
-        backgroundColor: const Color(0xFF050505),
+        backgroundColor: const Color(0xFF0A0A0A),
         appBar: AppBar(
-          backgroundColor: const Color(0xFF0D0D0D),
-          elevation: 0,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
-            onPressed: () => Navigator.of(context).pop(),
-          ),
+          backgroundColor: const Color(0xFF141414),
           title: Text(
-            courseTitle,
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 1.5,
-            ),
-          ),
-          bottom: PreferredSize(
-            preferredSize: const Size.fromHeight(1.0),
-            child: Container(color: const Color(0xFF1A1A1A), height: 1.0),
+            'Course Modules // ID: $courseId',
+            style: const TextStyle(color: Color(0xFF00E676)),
           ),
         ),
-        body: CourseDetailSplitView(courseId: courseId, licenseKey: licenseKey),
+        body: BlocBuilder<CourseDetailBloc, CourseDetailState>(
+          builder: (context, state) {
+            if (state is CourseDetailLoading || state is CourseDetailInitial) {
+              return const Center(
+                child: CircularProgressIndicator(color: Color(0xFF00E676)),
+              );
+            } else if (state is CourseDetailError) {
+              return Center(
+                child: Text(
+                  'Error: ${state.message}',
+                  style: const TextStyle(color: Colors.redAccent),
+                ),
+              );
+            } else if (state is CourseDetailLoaded) {
+              final tree = state.courseData['tree'] as List<dynamic>? ?? [];
+
+              if (tree.isEmpty) {
+                return const Center(
+                  child: Text(
+                    'No content available.',
+                    style: TextStyle(color: Colors.white54),
+                  ),
+                );
+              }
+
+              return ListView.builder(
+                padding: const EdgeInsets.all(16),
+                itemCount: tree.length,
+                itemBuilder: (context, index) {
+                  return PlayerRecursiveNode(
+                    node: tree[index],
+                    courseId: courseId,
+                  );
+                },
+              );
+            }
+            return const SizedBox.shrink();
+          },
+        ),
       ),
     );
   }
 }
 
-class CourseDetailSplitView extends StatefulWidget {
+class PlayerRecursiveNode extends StatefulWidget {
+  final dynamic node;
   final String courseId;
-  final String licenseKey;
 
-  const CourseDetailSplitView({
+  const PlayerRecursiveNode({
     super.key,
+    required this.node,
     required this.courseId,
-    required this.licenseKey,
   });
 
   @override
-  State<CourseDetailSplitView> createState() => _CourseDetailSplitViewState();
+  State<PlayerRecursiveNode> createState() => _PlayerRecursiveNodeState();
 }
 
-class _CourseDetailSplitViewState extends State<CourseDetailSplitView> {
-  int _selectedSectionIndex = 0;
+class _PlayerRecursiveNodeState extends State<PlayerRecursiveNode> {
+  bool isExpanded = false;
+
+  void _handleVideoTap() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => SecurePlayerScreen(
+          courseId: widget.courseId,
+          videoId: widget.node['id'],
+          vaultData: widget.node['vault'],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    return BlocBuilder<CourseDetailBloc, CourseDetailState>(
-      builder: (context, state) {
-        if (state is CourseDetailLoading || state is CourseDetailInitial) {
-          return const Center(
-            child: CircularProgressIndicator(
-              color: Color(0xFF00E676),
-              strokeWidth: 3.0,
-            ),
-          );
-        } else if (state is CourseDetailError) {
-          return Center(
-            child: Text(
-              "Data sync failed: ${state.message}",
-              style: const TextStyle(
-                color: Color(0xFFD32F2F),
-                fontFamily: 'monospace',
-                fontSize: 16,
-              ),
-            ),
-          );
-        } else if (state is CourseDetailLoaded) {
-          final sections = state.sections;
-          if (sections.isEmpty) {
-            return const Center(
-              child: Text(
-                "No content available for this course.",
-                style: TextStyle(color: Colors.white30, fontSize: 16),
-              ),
-            );
-          }
+    final isFolder = widget.node['item_type'] == 'folder';
+    final children = widget.node['children'] as List<dynamic>? ?? [];
 
-          if (_selectedSectionIndex >= sections.length) {
-            _selectedSectionIndex = 0;
-          }
-
-          final selectedSection = sections[_selectedSectionIndex];
-          final videos = selectedSection['videos'] as List<dynamic>;
-
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    if (!isFolder) {
+      return Container(
+        margin: const EdgeInsets.only(bottom: 8, top: 4),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: const Color(0xFF141414),
+          border: const Border(
+            left: BorderSide(color: Color(0xFF00E676), width: 4),
+          ),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: InkWell(
+          onTap: _handleVideoTap,
+          child: Row(
             children: [
-              Container(
-                width: 320,
-                decoration: const BoxDecoration(
-                  color: Color(0xFF0A0A0A),
-                  border: Border(
-                    right: BorderSide(color: Color(0xFF1A1A1A), width: 1.5),
-                  ),
-                ),
-                child: ListView.builder(
-                  padding: const EdgeInsets.symmetric(vertical: 20.0),
-                  itemCount: sections.length,
-                  itemBuilder: (context, index) {
-                    final section = sections[index];
-                    final isSelected = index == _selectedSectionIndex;
-
-                    return InkWell(
-                      onTap: () {
-                        setState(() {
-                          _selectedSectionIndex = index;
-                        });
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 24.0,
-                          vertical: 20.0,
-                        ),
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? const Color(0xFF00E676).withValues(alpha: 0.08)
-                              : Colors.transparent,
-                          border: Border(
-                            left: BorderSide(
-                              color: isSelected
-                                  ? const Color(0xFF00E676)
-                                  : Colors.transparent,
-                              width: 4.0,
-                            ),
-                          ),
-                        ),
-                        child: Text(
-                          section['title'] ?? 'Section',
-                          style: TextStyle(
-                            color: isSelected ? Colors.white : Colors.white54,
-                            fontSize: 16,
-                            fontWeight: isSelected
-                                ? FontWeight.bold
-                                : FontWeight.normal,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
+              const Icon(
+                Icons.play_circle_fill,
+                color: Color(0xFF00E676),
+                size: 32,
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.node['title'],
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
                       ),
-                    );
-                  },
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Duration: ${widget.node['duration'] ?? 0} Min',
+                      style: const TextStyle(
+                        color: Colors.white54,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.all(40.0),
-                  itemCount: videos.length,
-                  itemBuilder: (context, index) {
-                    final video = videos[index];
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 16.0),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF0D0D0D),
-                        borderRadius: BorderRadius.circular(12.0),
-                        border: Border.all(
-                          color: const Color(0xFF1A1A1A),
-                          width: 1.5,
-                        ),
-                      ),
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(12.0),
-                          hoverColor: Colors.white.withValues(alpha: 0.02),
-                          onTap: () {
-                            Navigator.of(context).push(
-                              PageRouteBuilder(
-                                transitionDuration: const Duration(
-                                  milliseconds: 150,
-                                ),
-                                reverseTransitionDuration: const Duration(
-                                  milliseconds: 150,
-                                ),
-                                pageBuilder:
-                                    (context, animation, secondaryAnimation) =>
-                                        SecurePlayerScreen(
-                                          courseId: widget.courseId,
-                                          licenseKey: widget.licenseKey,
-                                        ),
-                                transitionsBuilder:
-                                    (
-                                      context,
-                                      animation,
-                                      secondaryAnimation,
-                                      child,
-                                    ) {
-                                      return FadeTransition(
-                                        opacity: animation,
-                                        child: child,
-                                      );
-                                    },
-                              ),
-                            );
-                          },
-                          child: Padding(
-                            padding: const EdgeInsets.all(24.0),
-                            child: Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(14.0),
-                                  decoration: BoxDecoration(
-                                    color: const Color(
-                                      0xFF00E676,
-                                    ).withValues(alpha: 0.1),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(
-                                    Icons.play_arrow_rounded,
-                                    color: Color(0xFF00E676),
-                                    size: 28,
-                                  ),
-                                ),
-                                const SizedBox(width: 24),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        video['title'] ?? 'Unknown Session',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      Text(
-                                        video['description'] ??
-                                            'Premium content',
-                                        style: const TextStyle(
-                                          color: Colors.white30,
-                                          fontSize: 14,
-                                          height: 1.4,
-                                        ),
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const Padding(
-                                  padding: EdgeInsets.only(left: 16.0),
-                                  child: Icon(
-                                    Icons.chevron_right_rounded,
-                                    color: Colors.white24,
-                                    size: 32,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
+              const Icon(
+                Icons.download_rounded,
+                color: Colors.white54,
+                size: 20,
               ),
             ],
-          );
-        }
-        return const SizedBox();
-      },
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          margin: const EdgeInsets.only(bottom: 8, top: 4),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1A1A1A),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: ListTile(
+            leading: Icon(
+              isExpanded ? Icons.folder_open : Icons.folder,
+              color: const Color(0xFF00E676),
+            ),
+            title: Text(
+              widget.node['title'],
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            trailing: Icon(
+              isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+              color: Colors.white54,
+            ),
+            onTap: () => setState(() => isExpanded = !isExpanded),
+          ),
+        ),
+        if (isExpanded && children.isNotEmpty)
+          Container(
+            margin: const EdgeInsets.only(left: 16, bottom: 8),
+            decoration: const BoxDecoration(
+              border: Border(left: BorderSide(color: Colors.white12, width: 2)),
+            ),
+            padding: const EdgeInsets.only(left: 16),
+            child: ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: children.length,
+              itemBuilder: (context, childIndex) {
+                return PlayerRecursiveNode(
+                  node: children[childIndex],
+                  courseId: widget.courseId,
+                );
+              },
+            ),
+          ),
+      ],
     );
   }
 }

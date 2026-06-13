@@ -1,5 +1,4 @@
 import 'dart:io';
-
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../crypto/token_security.dart';
@@ -8,6 +7,8 @@ class ApiClient {
   final Dio _dio;
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
   final TokenSecurity _security = TokenSecurity();
+
+  Dio get dio => _dio;
 
   ApiClient()
     : _dio = Dio(
@@ -39,7 +40,7 @@ class ApiClient {
     try {
       await _dio.post('/auth/request-otp', data: {'phone_number': phone});
     } on DioException catch (e) {
-      print("DEBUG: API Error: ${e.response?.data}"); // این خیلی مهمه
+      print("DEBUG: API Error: ${e.response?.data}");
       rethrow;
     }
   }
@@ -67,20 +68,17 @@ class ApiClient {
   ) async {
     final deviceHash = await _security.getDeviceHash();
 
-    // الان این دیتا دقیقا با مدل HardwareAuthRequest پایتون مچ شده
     final authResponse = await _dio.post(
       '/auth/hardware',
       data: {
         'license_key': licenseKey,
         'hardware_hash': deviceHash,
-        'platform': Platform
-            .operatingSystem, // اتوماتیک میفرسته windows یا macos یا linux
+        'platform': Platform.operatingSystem,
       },
     );
 
     final hwToken = authResponse.data['payload']['access_token'];
 
-    // حالا با توکن سخت‌افزاری کلیدها رو میگیریم
     final keyResponse = await _dio.get(
       'https://api.devstorage.site/hls/$courseId/vid_1/keys',
       options: Options(headers: {'Authorization': 'Bearer $hwToken'}),
