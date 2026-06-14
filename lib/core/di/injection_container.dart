@@ -15,8 +15,7 @@ Future<void> init() async {
 
   sl.registerFactory(() => AuthBloc(apiClient: sl()));
   sl.registerFactory(() => DashboardBloc(apiClient: sl()));
-
-  sl.registerFactory(() => CourseDetailBloc(sl()));
+  sl.registerFactory(() => CourseDetailBloc(apiClient: sl()));
 
   sl.registerFactory(() => VideoPlayerBloc());
   sl.registerFactory(() => WatermarkBloc());

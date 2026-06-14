@@ -9,7 +9,7 @@ class DashboardRepository {
 
   Future<Map<String, dynamic>> getCourseDetails(int courseId) async {
     try {
-      final response = await _dio.get('/course/$courseId');
+      final response = await _dio.get('/dashboard/course-content/$courseId');
       if (response.statusCode == 200) {
         return response.data as Map<String, dynamic>;
       }

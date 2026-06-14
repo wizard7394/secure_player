@@ -13,7 +13,7 @@ class CourseDetailScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return BlocProvider(
       create: (context) =>
-          sl<CourseDetailBloc>()..add(FetchCourseDetail(int.parse(courseId))),
+          sl<CourseDetailBloc>()..add(FetchCourseContentEvent(courseId)),
       child: Scaffold(
         backgroundColor: const Color(0xFF0A0A0A),
         appBar: AppBar(
@@ -37,7 +37,7 @@ class CourseDetailScreen extends StatelessWidget {
                 ),
               );
             } else if (state is CourseDetailLoaded) {
-              final tree = state.courseData['tree'] as List<dynamic>? ?? [];
+              final tree = state.sections;
 
               if (tree.isEmpty) {
                 return const Center(

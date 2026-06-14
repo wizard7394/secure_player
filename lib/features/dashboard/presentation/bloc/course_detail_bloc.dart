@@ -1,41 +1,61 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
-import '../../data/dashboard_repository.dart';
+import 'package:equatable/equatable.dart';
+import '../../../../core/network/api_client.dart';
 
-abstract class CourseDetailEvent {}
-
-class FetchCourseDetail extends CourseDetailEvent {
-  final int courseId;
-  FetchCourseDetail(this.courseId);
+abstract class CourseDetailEvent extends Equatable {
+  const CourseDetailEvent();
+  @override
+  List<Object> get props => [];
 }
 
-abstract class CourseDetailState {}
+class FetchCourseContentEvent extends CourseDetailEvent {
+  final String courseId;
+  const FetchCourseContentEvent(this.courseId);
+  @override
+  List<Object> get props => [courseId];
+}
+
+abstract class CourseDetailState extends Equatable {
+  const CourseDetailState();
+  @override
+  List<Object> get props => [];
+}
 
 class CourseDetailInitial extends CourseDetailState {}
 
 class CourseDetailLoading extends CourseDetailState {}
 
 class CourseDetailLoaded extends CourseDetailState {
-  final Map<String, dynamic> courseData;
-  CourseDetailLoaded(this.courseData);
+  final List<dynamic> sections;
+  const CourseDetailLoaded({required this.sections});
+  @override
+  List<Object> get props => [sections];
 }
 
 class CourseDetailError extends CourseDetailState {
   final String message;
-  CourseDetailError(this.message);
+  const CourseDetailError({required this.message});
+  @override
+  List<Object> get props => [message];
 }
 
 class CourseDetailBloc extends Bloc<CourseDetailEvent, CourseDetailState> {
-  final DashboardRepository repository;
+  final ApiClient apiClient;
 
-  CourseDetailBloc(this.repository) : super(CourseDetailInitial()) {
-    on<FetchCourseDetail>((event, emit) async {
-      emit(CourseDetailLoading());
-      try {
-        final data = await repository.getCourseDetails(event.courseId);
-        emit(CourseDetailLoaded(data));
-      } catch (e) {
-        emit(CourseDetailError(e.toString().replaceAll('Exception: ', '')));
-      }
-    });
+  CourseDetailBloc({required this.apiClient}) : super(CourseDetailInitial()) {
+    on<FetchCourseContentEvent>(_onFetchContent);
+  }
+
+  Future<void> _onFetchContent(
+    FetchCourseContentEvent event,
+    Emitter<CourseDetailState> emit,
+  ) async {
+    emit(CourseDetailLoading());
+    try {
+      final sections = await apiClient.fetchCourseDetails(event.courseId);
+      emit(CourseDetailLoaded(sections: sections));
+    } catch (e) {
+      emit(CourseDetailError(message: e.toString()));
+    }
   }
 }
