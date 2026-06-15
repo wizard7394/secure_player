@@ -1,5 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:dio/dio.dart';
+import 'package:path_provider/path_provider.dart';
 import '../../../../core/di/injection_container.dart';
 import '../bloc/course_detail_bloc.dart';
 import '../../../player/presentation/screens/secure_player_screen.dart';
@@ -83,17 +86,133 @@ class PlayerRecursiveNode extends StatefulWidget {
 
 class _PlayerRecursiveNodeState extends State<PlayerRecursiveNode> {
   bool isExpanded = false;
+  bool isDownloading = false;
+  double downloadProgress = 0.0;
+  bool isFileReady = false;
+  String localFilePath = '';
 
-  void _handleVideoTap() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => SecurePlayerScreen(
-          courseId: widget.courseId,
-          videoId: widget.node['id'],
-          vaultData: widget.node['vault'],
+  @override
+  void initState() {
+    super.initState();
+    _checkLocalFileStatus();
+  }
+
+  Future<void> _checkLocalFileStatus() async {
+    if (widget.node['item_type'] == 'video' && widget.node['vault'] != null) {
+      final appDir = await getApplicationDocumentsDirectory();
+      final vaultUuid = widget.node['vault']['uuid'];
+      localFilePath = '${appDir.path}/drm_vault/media_$vaultUuid.mp6';
+
+      final file = File(localFilePath);
+      if (await file.exists()) {
+        if (mounted) {
+          setState(() {
+            isFileReady = true;
+          });
+        }
+      }
+    }
+  }
+
+  Future<void> _handleVideoAction() async {
+    if (isFileReady) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => SecurePlayerScreen(
+            courseId: widget.courseId,
+            videoId: widget.node['id'],
+            vaultData: widget.node['vault'],
+          ),
         ),
-      ),
+      );
+      return;
+    }
+
+    final vault = widget.node['vault'];
+    if (vault == null ||
+        vault['download_url'] == null ||
+        vault['download_url'].toString().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Media source is missing or not assigned.'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+      return;
+    }
+
+    final appDir = await getApplicationDocumentsDirectory();
+    final vaultDir = Directory('${appDir.path}/drm_vault');
+    if (!await vaultDir.exists()) {
+      await vaultDir.create(recursive: true);
+    }
+
+    setState(() {
+      isDownloading = true;
+      downloadProgress = 0.0;
+    });
+
+    try {
+      final dio = Dio();
+      await dio.download(
+        vault['download_url'],
+        localFilePath,
+        onReceiveProgress: (received, total) {
+          if (total != -1 && mounted) {
+            setState(() {
+              downloadProgress = received / total;
+            });
+          }
+        },
+      );
+
+      if (mounted) {
+        setState(() {
+          isDownloading = false;
+          isFileReady = true;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          isDownloading = false;
+          downloadProgress = 0.0;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Download failed: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    }
+  }
+
+  Widget _buildTrailingAction() {
+    if (isDownloading) {
+      return SizedBox(
+        width: 24,
+        height: 24,
+        child: CircularProgressIndicator(
+          value: downloadProgress,
+          color: const Color(0xFF00E676),
+          backgroundColor: Colors.white12,
+          strokeWidth: 3,
+        ),
+      );
+    }
+    if (isFileReady) {
+      return const Icon(
+        Icons.offline_pin_rounded,
+        color: Color(0xFF00E676),
+        size: 24,
+      );
+    }
+    return const Icon(
+      Icons.cloud_download_outlined,
+      color: Colors.white54,
+      size: 24,
     );
   }
 
@@ -110,7 +229,7 @@ class _PlayerRecursiveNodeState extends State<PlayerRecursiveNode> {
           borderRadius: BorderRadius.circular(4),
           clipBehavior: Clip.antiAlias,
           child: InkWell(
-            onTap: _handleVideoTap,
+            onTap: isDownloading ? null : _handleVideoAction,
             child: Container(
               padding: const EdgeInsets.all(12),
               decoration: const BoxDecoration(
@@ -148,11 +267,7 @@ class _PlayerRecursiveNodeState extends State<PlayerRecursiveNode> {
                       ],
                     ),
                   ),
-                  const Icon(
-                    Icons.download_rounded,
-                    color: Colors.white54,
-                    size: 20,
-                  ),
+                  _buildTrailingAction(),
                 ],
               ),
             ),
