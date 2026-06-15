@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/di/injection_container.dart';
 import '../bloc/course_detail_bloc.dart';
 import '../../../player/presentation/screens/secure_player_screen.dart';
@@ -25,6 +27,42 @@ class CourseDetailScreen extends StatelessWidget {
             'Course Modules // ID: $courseId',
             style: const TextStyle(color: Color(0xFF00E676)),
           ),
+          actions: [
+            Builder(
+              builder: (ctx) => IconButton(
+                icon: const Icon(
+                  Icons.drive_folder_upload,
+                  color: Color(0xFF00E676),
+                ),
+                tooltip: 'Set External Storage Path',
+                onPressed: () async {
+                  final result = await FilePicker.platform.getDirectoryPath();
+                  if (result != null) {
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.setString('custom_vault_path', result);
+                    if (ctx.mounted) {
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'Storage path linked: $result',
+                            style: const TextStyle(
+                              color: Colors.black,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          backgroundColor: const Color(0xFF00E676),
+                        ),
+                      );
+                      BlocProvider.of<CourseDetailBloc>(
+                        ctx,
+                      ).add(FetchCourseContentEvent(courseId));
+                    }
+                  }
+                },
+              ),
+            ),
+            const SizedBox(width: 16),
+          ],
         ),
         body: BlocBuilder<CourseDetailBloc, CourseDetailState>(
           builder: (context, state) {
@@ -89,7 +127,7 @@ class _PlayerRecursiveNodeState extends State<PlayerRecursiveNode> {
   bool isDownloading = false;
   double downloadProgress = 0.0;
   bool isFileReady = false;
-  String localFilePath = '';
+  String activeFilePath = '';
 
   @override
   void initState() {
@@ -99,12 +137,41 @@ class _PlayerRecursiveNodeState extends State<PlayerRecursiveNode> {
 
   Future<void> _checkLocalFileStatus() async {
     if (widget.node['item_type'] == 'video' && widget.node['vault'] != null) {
-      final appDir = await getApplicationDocumentsDirectory();
       final vaultUuid = widget.node['vault']['uuid'];
-      localFilePath = '${appDir.path}/drm_vault/media_$vaultUuid.mp6';
+      final targetFileName = 'media_$vaultUuid.mp6';
 
-      final file = File(localFilePath);
-      if (await file.exists()) {
+      final prefs = await SharedPreferences.getInstance();
+      final customPath = prefs.getString('custom_vault_path');
+
+      // لاجیک جدید: جستجوی بازگشتی در پوشه‌های تو در تو
+      if (customPath != null && Directory(customPath).existsSync()) {
+        final dir = Directory(customPath);
+        // پیدا کردن فایل در تمام زیرپوشه‌ها (Recursive)
+        final List<FileSystemEntity> files = dir.listSync(
+          recursive: true,
+          followLinks: false,
+        );
+
+        for (final file in files) {
+          if (file is File && file.path.endsWith(targetFileName)) {
+            activeFilePath = file.path;
+            if (mounted) {
+              setState(() {
+                isFileReady = true;
+              });
+            }
+            return; // فایل پیدا شد، دیگه ادامه نده
+          }
+        }
+      }
+
+      // اگر توی پوشه شخصی نبود، چک کردن مسیر پیش‌فرض (که قبلاً داشتیم)
+      final appDir = await getApplicationDocumentsDirectory();
+      final defaultFilePath = '${appDir.path}/drm_vault/$targetFileName';
+      final defaultFile = File(defaultFilePath);
+
+      if (await defaultFile.exists()) {
+        activeFilePath = defaultFile.path;
         if (mounted) {
           setState(() {
             isFileReady = true;
@@ -157,7 +224,7 @@ class _PlayerRecursiveNodeState extends State<PlayerRecursiveNode> {
       final dio = Dio();
       await dio.download(
         vault['download_url'],
-        localFilePath,
+        activeFilePath,
         onReceiveProgress: (received, total) {
           if (total != -1 && mounted) {
             setState(() {
