@@ -105,52 +105,57 @@ class _PlayerRecursiveNodeState extends State<PlayerRecursiveNode> {
     if (!isFolder) {
       return Container(
         margin: const EdgeInsets.only(bottom: 8, top: 4),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
+        child: Material(
           color: const Color(0xFF141414),
-          border: const Border(
-            left: BorderSide(color: Color(0xFF00E676), width: 4),
-          ),
           borderRadius: BorderRadius.circular(4),
-        ),
-        child: InkWell(
-          onTap: _handleVideoTap,
-          child: Row(
-            children: [
-              const Icon(
-                Icons.play_circle_fill,
-                color: Color(0xFF00E676),
-                size: 32,
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      widget.node['title'],
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Duration: ${widget.node['duration'] ?? 0} Min',
-                      style: const TextStyle(
-                        color: Colors.white54,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: _handleVideoTap,
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: const BoxDecoration(
+                border: Border(
+                  left: BorderSide(color: Color(0xFF00E676), width: 4),
                 ),
               ),
-              const Icon(
-                Icons.download_rounded,
-                color: Colors.white54,
-                size: 20,
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.play_circle_fill,
+                    color: Color(0xFF00E676),
+                    size: 32,
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.node['title'],
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Duration: ${widget.node['duration'] ?? 0} Min',
+                          style: const TextStyle(
+                            color: Colors.white54,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(
+                    Icons.download_rounded,
+                    color: Colors.white54,
+                    size: 20,
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       );
@@ -162,27 +167,30 @@ class _PlayerRecursiveNodeState extends State<PlayerRecursiveNode> {
       children: [
         Container(
           margin: const EdgeInsets.only(bottom: 8, top: 4),
-          decoration: BoxDecoration(
+          child: Material(
             color: const Color(0xFF1A1A1A),
             borderRadius: BorderRadius.circular(4),
-          ),
-          child: ListTile(
-            leading: Icon(
-              isExpanded ? Icons.folder_open : Icons.folder,
-              color: const Color(0xFF00E676),
-            ),
-            title: Text(
-              widget.node['title'],
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
+            clipBehavior: Clip.antiAlias,
+            child: ListTile(
+              leading: Icon(
+                isExpanded ? Icons.folder_open : Icons.folder,
+                color: const Color(0xFF00E676),
               ),
+              title: Text(
+                widget.node['title'],
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              trailing: Icon(
+                isExpanded
+                    ? Icons.keyboard_arrow_up
+                    : Icons.keyboard_arrow_down,
+                color: Colors.white54,
+              ),
+              onTap: () => setState(() => isExpanded = !isExpanded),
             ),
-            trailing: Icon(
-              isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
-              color: Colors.white54,
-            ),
-            onTap: () => setState(() => isExpanded = !isExpanded),
           ),
         ),
         if (isExpanded && children.isNotEmpty)
