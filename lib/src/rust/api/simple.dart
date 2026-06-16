@@ -6,17 +6,14 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `stream_handler`
-// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `PlayerState`
+// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `DECRYPTION_STATE`, `DecryptionKeys`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `deref`, `initialize`
+// These functions have error during generation (see debug logs or enable `stop_on_error: true` for more details): `custom_open_fn_wrapper`
 
-Future<String> startProxyServer({
-  required int port,
-  required String filePath,
-  required List<int> aesKey,
-  required List<int> aesIv,
-}) => RustLib.instance.api.crateApiSimpleStartProxyServer(
-  port: port,
-  filePath: filePath,
-  aesKey: aesKey,
-  aesIv: aesIv,
-);
+void setDecryptionKeys({required List<int> key, required List<int> iv}) =>
+    RustLib.instance.api.crateApiSimpleSetDecryptionKeys(key: key, iv: iv);
+
+bool bindSecureProtocol({required PlatformInt64 handleAddress}) => RustLib
+    .instance
+    .api
+    .crateApiSimpleBindSecureProtocol(handleAddress: handleAddress);

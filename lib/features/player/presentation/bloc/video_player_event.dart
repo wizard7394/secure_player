@@ -10,11 +10,13 @@ abstract class VideoPlayerEvent extends Equatable {
 class InitializeVideo extends VideoPlayerEvent {
   final String courseId;
   final String licenseKey;
+  final String localFilePath;
 
-  const InitializeVideo({required this.courseId, required this.licenseKey});
-
-  @override
-  List<Object> get props => [courseId, licenseKey];
+  const InitializeVideo({
+    required this.courseId,
+    required this.licenseKey,
+    required this.localFilePath,
+  });
 }
 
 class PlayVideo extends VideoPlayerEvent {

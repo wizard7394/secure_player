@@ -1,16 +1,14 @@
 import 'dart:convert';
 import 'package:flutter_bloc/flutter_bloc.dart';
+// استفاده از ایمپورت پکیجی برای جلوگیری از گم شدن مسیر فایل‌های راست
+import 'package:secure_player/src/rust/api/simple.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/di/injection_container.dart' as di;
-import '../../../../src/rust/api/simple.dart';
 import 'video_player_event.dart';
 import 'video_player_state.dart';
 
 class VideoPlayerBloc extends Bloc<VideoPlayerEvent, VideoPlayerState> {
-  final String encryptedFilePath =
-      r"C:\Users\AmirHosein\Desktop\New folder\01.Start.mp6";
-
-  final ApiClient _apiClient = di.sl<ApiClient>();
+  final ApiClient apiClient = di.sl<ApiClient>();
 
   VideoPlayerBloc() : super(const VideoPlayerInitial()) {
     on<InitializeVideo>(_onInitializeVideo);
@@ -27,27 +25,23 @@ class VideoPlayerBloc extends Bloc<VideoPlayerEvent, VideoPlayerState> {
     emit(const VideoPlayerLoading());
 
     try {
-      print("Starting Hardware Handshake and Decryption...");
+      print("Fetching Decryption Keys...");
 
-      final responseData = await _apiClient.fetchVideoKeys(
+      final responseData = await apiClient.fetchVideoKeys(
         event.courseId,
         event.licenseKey,
       );
 
-      final String base64Key = responseData['aes_key'];
-      final String base64Iv = responseData['aes_iv'];
+      final aesKey = base64Decode(responseData['aes_key']);
+      final aesIv = base64Decode(responseData['aes_iv']);
 
-      final List<int> aesKey = base64Decode(base64Key);
-      final List<int> aesIv = base64Decode(base64Iv);
+      // تزریق کلیدها مستقیماً به حافظه انجین
+      setDecryptionKeys(key: aesKey, iv: aesIv);
 
-      final proxyUrl = await startProxyServer(
-        port: 8080,
-        filePath: encryptedFilePath,
-        aesKey: aesKey,
-        aesIv: aesIv,
-      );
+      // استفاده از مسیر داینامیکی که انجین سرچ پیدا کرده بود
+      final String customUri = 'safedrm://${event.localFilePath}';
 
-      print("Rust Proxy Server Connected Successfully at: $proxyUrl");
+      print("Ready to stream from memory: $customUri");
 
       emit(
         const VideoPlayerReady(
@@ -58,7 +52,7 @@ class VideoPlayerBloc extends Bloc<VideoPlayerEvent, VideoPlayerState> {
         ),
       );
     } catch (e) {
-      print("Engine Disconnected or Error: $e");
+      print("Error: $e");
       emit(const VideoPlayerInitial());
     }
   }
