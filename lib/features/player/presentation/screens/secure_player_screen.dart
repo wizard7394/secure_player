@@ -2,14 +2,16 @@ import 'package:flutter/material.dart';
 
 class SecurePlayerScreen extends StatefulWidget {
   final String courseId;
-  final int videoId;
-  final Map<String, dynamic>? vaultData;
+  final dynamic videoId;
+  final dynamic vaultData;
+  final String? localFilePath;
 
   const SecurePlayerScreen({
     super.key,
     required this.courseId,
     required this.videoId,
     required this.vaultData,
+    this.localFilePath,
   });
 
   @override

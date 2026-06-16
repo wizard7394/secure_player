@@ -135,48 +135,93 @@ class _PlayerRecursiveNodeState extends State<PlayerRecursiveNode> {
     _checkLocalFileStatus();
   }
 
+  Future<String?> _searchFileRobustly(
+    Directory rootDir,
+    String targetTitle,
+  ) async {
+    List<Directory> dirsToCheck = [rootDir];
+    final String normalizedTarget = targetTitle.toLowerCase().replaceAll(
+      RegExp(r'\s+'),
+      '',
+    );
+
+    while (dirsToCheck.isNotEmpty) {
+      final currentDir = dirsToCheck.removeAt(0);
+      try {
+        final entities = currentDir.listSync(
+          recursive: false,
+          followLinks: false,
+        );
+        for (final entity in entities) {
+          if (entity is File) {
+            final fileName = entity.path.split(Platform.pathSeparator).last;
+            if (fileName.toLowerCase().endsWith('.mp6')) {
+              final nameWithoutExt = fileName.substring(0, fileName.length - 4);
+              final normalizedFile = nameWithoutExt.toLowerCase().replaceAll(
+                RegExp(r'\s+'),
+                '',
+              );
+
+              if (normalizedFile == normalizedTarget) {
+                return entity.path;
+              }
+            }
+          } else if (entity is Directory) {
+            dirsToCheck.add(entity);
+          }
+        }
+      } catch (e) {
+        continue;
+      }
+    }
+    return null;
+  }
+
   Future<void> _checkLocalFileStatus() async {
     if (widget.node['item_type'] == 'video' && widget.node['vault'] != null) {
-      final vaultUuid = widget.node['vault']['uuid'];
-      final targetFileName = 'media_$vaultUuid.mp6';
+      final String nodeTitle = widget.node['title']
+          .toString()
+          .replaceAll('.mp6', '')
+          .trim();
+      final vaultUuid = widget.node['vault']['uuid'].toString();
 
       final prefs = await SharedPreferences.getInstance();
       final customPath = prefs.getString('custom_vault_path');
 
-      // لاجیک جدید: جستجوی بازگشتی در پوشه‌های تو در تو
       if (customPath != null && Directory(customPath).existsSync()) {
-        final dir = Directory(customPath);
-        // پیدا کردن فایل در تمام زیرپوشه‌ها (Recursive)
-        final List<FileSystemEntity> files = dir.listSync(
-          recursive: true,
-          followLinks: false,
+        final foundPath = await _searchFileRobustly(
+          Directory(customPath),
+          nodeTitle,
         );
 
-        for (final file in files) {
-          if (file is File && file.path.endsWith(targetFileName)) {
-            activeFilePath = file.path;
-            if (mounted) {
-              setState(() {
-                isFileReady = true;
-              });
-            }
-            return; // فایل پیدا شد، دیگه ادامه نده
+        if (foundPath != null) {
+          activeFilePath = foundPath;
+          if (mounted) {
+            setState(() {
+              isFileReady = true;
+            });
           }
+          return;
         }
+        activeFilePath = '$customPath${Platform.pathSeparator}$nodeTitle.mp6';
+      } else {
+        await _setFallbackDefaultPath(vaultUuid);
       }
+    }
+  }
 
-      // اگر توی پوشه شخصی نبود، چک کردن مسیر پیش‌فرض (که قبلاً داشتیم)
-      final appDir = await getApplicationDocumentsDirectory();
-      final defaultFilePath = '${appDir.path}/drm_vault/$targetFileName';
-      final defaultFile = File(defaultFilePath);
+  Future<void> _setFallbackDefaultPath(String vaultUuid) async {
+    final targetFileName = 'media_$vaultUuid.mp6';
+    final appDir = await getApplicationDocumentsDirectory();
+    final defaultFilePath = '${appDir.path}/drm_vault/$targetFileName';
+    final defaultFile = File(defaultFilePath);
 
-      if (await defaultFile.exists()) {
-        activeFilePath = defaultFile.path;
-        if (mounted) {
-          setState(() {
-            isFileReady = true;
-          });
-        }
+    activeFilePath = defaultFilePath;
+    if (defaultFile.existsSync()) {
+      if (mounted) {
+        setState(() {
+          isFileReady = true;
+        });
       }
     }
   }
@@ -190,6 +235,7 @@ class _PlayerRecursiveNodeState extends State<PlayerRecursiveNode> {
             courseId: widget.courseId,
             videoId: widget.node['id'],
             vaultData: widget.node['vault'],
+            localFilePath: activeFilePath,
           ),
         ),
       );
@@ -209,10 +255,10 @@ class _PlayerRecursiveNodeState extends State<PlayerRecursiveNode> {
       return;
     }
 
-    final appDir = await getApplicationDocumentsDirectory();
-    final vaultDir = Directory('${appDir.path}/drm_vault');
-    if (!await vaultDir.exists()) {
-      await vaultDir.create(recursive: true);
+    final targetFile = File(activeFilePath);
+    final targetDir = targetFile.parent;
+    if (!await targetDir.exists()) {
+      await targetDir.create(recursive: true);
     }
 
     setState(() {
