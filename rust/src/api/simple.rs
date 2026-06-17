@@ -28,3 +28,8 @@ pub fn set_decryption_keys(key: Vec<u8>, iv: Vec<u8>, file_path: String) {
 pub fn bind_secure_protocol(handle_address: i64) -> bool {
     crate::ffi_bridge::do_bind(handle_address)
 }
+
+#[frb(sync)]
+pub fn play_secure_stream(handle_address: i64) -> bool {
+    crate::ffi_bridge::do_play(handle_address)
+}

@@ -17,30 +17,10 @@ class VideoPlayerBloc extends Bloc<VideoPlayerEvent, VideoPlayerState> {
     on<ToggleMute>(_onToggleMute);
   }
 
+  // حالا پارسر فقط و فقط روی Base64 تمرکز می‌کنه تا طول بایت‌ها خراب نشن
   List<int> _parseKey(String input) {
     input = input.trim().replaceAll('"', '');
-
-    // تشخیص هگزادسیمال
-    final hexRegex = RegExp(r'^[0-9a-fA-F]+$');
-    if (input.length % 2 == 0 && hexRegex.hasMatch(input)) {
-      List<int> bytes = [];
-      for (int i = 0; i < input.length; i += 2) {
-        bytes.add(int.parse(input.substring(i, i + 2), radix: 16));
-      }
-      return bytes;
-    }
-
-    // تشخیص IV خام 16 بایتی (UTF-8)
-    if (input.length == 16 && !input.contains('=')) {
-      return utf8.encode(input);
-    }
-
-    // در غیر این صورت Base64
-    try {
-      return base64Decode(input);
-    } catch (e) {
-      return utf8.encode(input); // فال‌بک نهایی
-    }
+    return base64Decode(input);
   }
 
   void _onInitializeVideo(
@@ -64,8 +44,9 @@ class VideoPlayerBloc extends Bloc<VideoPlayerEvent, VideoPlayerState> {
 
       setDecryptionKeys(key: aesKey, iv: aesIv, filePath: event.localFilePath);
 
+      // آدرس فیک با فرمت استاندارد برای فریب مدیاکیت
       final String customUri =
-          'safedrm://bypass_${DateTime.now().millisecondsSinceEpoch}';
+          'safedrm://localhost/bypass_video_${DateTime.now().millisecondsSinceEpoch}.mp4';
 
       emit(
         VideoPlayerReady(

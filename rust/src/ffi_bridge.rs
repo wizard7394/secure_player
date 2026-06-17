@@ -1,13 +1,32 @@
 use std::os::raw::{c_char, c_void, c_int};
 use std::ffi::CString;
-use std::io::{Read, Seek, SeekFrom};
-use std::fs::File;
+use std::io::{Read, Seek, SeekFrom, Write};
+use std::fs::{File, OpenOptions};
+use std::path::PathBuf;
 use std::ptr;
 use libloading::Library;
 use aes::cipher::{KeyIvInit, StreamCipher, StreamCipherSeek};
 
-type Aes128Ctr = ctr::Ctr128BE<aes::Aes128>;
 type Aes256Ctr = ctr::Ctr128BE<aes::Aes256>;
+
+fn get_log_path() -> PathBuf {
+    let mut path = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("."));
+    path.pop();
+    path.push("safedrm_core_debug.log");
+    path
+}
+
+macro_rules! write_log {
+    ($($arg:tt)*) => {
+        {
+            let msg = format!($($arg)*);
+            if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(get_log_path()) {
+                let time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis();
+                let _ = writeln!(file, "[{}] RUST_ENGINE: {}", time, msg);
+            }
+        }
+    }
+}
 
 #[repr(C)]
 pub struct MpvStreamCbInfo {
@@ -21,71 +40,97 @@ pub struct MpvStreamCbInfo {
 
 pub struct DrmStreamContext {
     pub file: File,
-    pub file_size: u64,
-    pub current_offset: u64,
+    pub logical_size: u64,
+    pub logical_offset: u64,
+    pub is_plaintext: bool,
 }
 
 pub extern "C" fn custom_read_fn(cookie: *mut c_void, buf: *mut c_char, size: u64) -> i64 {
     if cookie.is_null() { return -1; }
     let ctx = unsafe { &mut *(cookie as *mut DrmStreamContext) };
     
-    let buffer_size = std::cmp::min(size as usize, 1024 * 1024 * 5);
-    let mut temp_buffer = vec![0u8; buffer_size];
+    if ctx.logical_offset >= ctx.logical_size { return 0; }
     
-    match ctx.file.read(&mut temp_buffer) {
-        Ok(bytes_read) => {
-            if bytes_read == 0 { return 0; }
-            
+    let mut bytes_fulfilled = 0;
+    let mut dest_buf = buf as *mut u8;
+    
+    while bytes_fulfilled < size && ctx.logical_offset < ctx.logical_size {
+        let chunk_index = ctx.logical_offset / 2_097_152;
+        let offset_in_chunk = ctx.logical_offset % 2_097_152;
+        
+        let remaining_in_chunk = 2_097_152 - offset_in_chunk;
+        let remaining_in_file = ctx.logical_size - ctx.logical_offset;
+        let request_remaining = size - bytes_fulfilled;
+        
+        let to_read = std::cmp::min(
+            request_remaining,
+            std::cmp::min(remaining_in_chunk, remaining_in_file)
+        );
+        
+        if to_read == 0 { break; }
+        
+        let physical_offset = if ctx.is_plaintext {
+            ctx.logical_offset
+        } else {
+            104 + (chunk_index * 2_097_168) + offset_in_chunk
+        };
+        
+        if ctx.file.seek(SeekFrom::Start(physical_offset)).is_err() { break; }
+        
+        let mut temp_buf = vec![0u8; to_read as usize];
+        let read_bytes = match ctx.file.read(&mut temp_buf) {
+            Ok(b) => b,
+            Err(_) => break,
+        };
+        
+        if read_bytes == 0 { break; }
+        
+        if !ctx.is_plaintext {
             let state = crate::api::simple::DECRYPTION_STATE.lock().unwrap();
             let key = &state.key;
-            let iv = &state.iv;
+            let base_iv = &state.iv;
             
-            if key.len() == 16 || key.len() == 32 {
-                let mut final_iv = vec![0u8; 16];
-                let iv_len = std::cmp::min(iv.len(), 16);
-                if iv_len > 0 { final_iv[..iv_len].copy_from_slice(&iv[..iv_len]); }
-
-                if key.len() == 16 {
-                    if let Ok(mut cipher) = Aes128Ctr::new_from_slices(key, &final_iv) {
-                        cipher.seek(ctx.current_offset);
-                        cipher.apply_keystream(&mut temp_buffer[..bytes_read]);
-                    }
-                } else if key.len() == 32 {
-                    if let Ok(mut cipher) = Aes256Ctr::new_from_slices(key, &final_iv) {
-                        cipher.seek(ctx.current_offset);
-                        cipher.apply_keystream(&mut temp_buffer[..bytes_read]);
-                    }
+            if key.len() == 32 && base_iv.len() == 12 {
+                let mut chunk_iv = base_iv.clone();
+                let pos_bytes = (chunk_index as u32).to_le_bytes();
+                for i in 0..4 {
+                    chunk_iv[8 + i] ^= pos_bytes[i];
+                }
+                
+                let mut final_nonce = [0u8; 16];
+                final_nonce[..12].copy_from_slice(&chunk_iv);
+                final_nonce[15] = 2; 
+                
+                if let Ok(mut cipher) = Aes256Ctr::new_from_slices(key, &final_nonce) {
+                    cipher.seek(offset_in_chunk as u64);
+                    cipher.apply_keystream(&mut temp_buf[..read_bytes]);
                 }
             }
-            
-            unsafe { ptr::copy_nonoverlapping(temp_buffer.as_ptr(), buf as *mut u8, bytes_read); }
-            ctx.current_offset += bytes_read as u64;
-            bytes_read as i64
         }
-        Err(e) => {
-            println!("RUST_ENGINE: [ERROR] Failed to read: {:?}", e);
-            -1
-        }
+        
+        unsafe { ptr::copy_nonoverlapping(temp_buf.as_ptr(), dest_buf, read_bytes); }
+        dest_buf = unsafe { dest_buf.add(read_bytes) };
+        bytes_fulfilled += read_bytes as u64;
+        ctx.logical_offset += read_bytes as u64;
     }
+    
+    write_log!("[READ] Requested: {}, Served: {}, New Offset: {}", size, bytes_fulfilled, ctx.logical_offset);
+    bytes_fulfilled as i64
 }
 
 pub extern "C" fn custom_seek_fn(cookie: *mut c_void, offset: i64) -> i64 {
     if cookie.is_null() { return -1; }
     let ctx = unsafe { &mut *(cookie as *mut DrmStreamContext) };
-    
-    match ctx.file.seek(SeekFrom::Start(offset as u64)) {
-        Ok(new_pos) => {
-            ctx.current_offset = new_pos;
-            new_pos as i64
-        },
-        Err(_) => -1,
-    }
+    if offset < 0 || offset as u64 > ctx.logical_size { return -1; }
+    ctx.logical_offset = offset as u64;
+    write_log!("[SEEK] Engine jumped to logical offset: {}", offset);
+    offset
 }
 
 pub extern "C" fn custom_size_fn(cookie: *mut c_void) -> i64 {
     if cookie.is_null() { return -1; }
     let ctx = unsafe { &mut *(cookie as *mut DrmStreamContext) };
-    ctx.file_size as i64
+    ctx.logical_size as i64
 }
 
 pub extern "C" fn custom_close_fn(cookie: *mut c_void) {
@@ -102,22 +147,40 @@ pub extern "C" fn custom_open_fn(
     let state = crate::api::simple::DECRYPTION_STATE.lock().unwrap();
     let file_path = state.file_path.clone();
     
-    println!("RUST_ENGINE: Opening absolute path -> {}", file_path);
-    
     if file_path.is_empty() { return -1; }
     
-    let file = match File::open(&file_path) {
+    let mut file = match File::open(&file_path) {
         Ok(f) => f,
-        Err(e) => {
-            println!("RUST_ENGINE: [FATAL] Path not found: {:?}", e);
-            return -1;
-        }
+        Err(_) => return -1
     };
     
-    let file_size = file.metadata().unwrap().len();
-    println!("RUST_ENGINE: File opened. Size: {} bytes", file_size);
+    let total_size = file.metadata().unwrap().len();
+    let mut magic = [0u8; 4];
+    let mut is_plaintext = true;
     
-    let stream_ctx = Box::new(DrmStreamContext { file, file_size, current_offset: 0 });
+    if file.read_exact(&mut magic).is_ok() {
+        if &magic == b"DRM6" {
+            is_plaintext = false;
+        }
+    }
+    
+    let logical_size = if is_plaintext {
+        total_size
+    } else {
+        let payload_size = total_size.saturating_sub(104);
+        let chunks = payload_size / 2_097_168;
+        let remainder = payload_size % 2_097_168;
+        (chunks * 2_097_152) + remainder.saturating_sub(16)
+    };
+    
+    write_log!("[OPEN] File Engine Initialized. Plaintext: {}, Virtual Size: {}", is_plaintext, logical_size);
+    
+    let stream_ctx = Box::new(DrmStreamContext { 
+        file, 
+        logical_size, 
+        logical_offset: 0,
+        is_plaintext
+    });
     
     unsafe {
         (*cb_info).cookie = Box::into_raw(stream_ctx) as *mut c_void;
@@ -131,40 +194,41 @@ pub extern "C" fn custom_open_fn(
 }
 
 pub fn do_bind(handle_address: i64) -> bool {
+    let _ = std::fs::remove_file(get_log_path());
     let handle = handle_address as *mut c_void;
-    let protocol_name = CString::new("safedrm").unwrap();
+    let protocol_name = CString::new("safedrm").unwrap().into_raw(); 
     
     unsafe {
-        let dll_names = ["mpv-2.dll", "mpv-1.dll", "libmpv-2.dll", "libmpv-1.dll", "mpv.dll", "libmpv.dylib", "libmpv.so.2", "libmpv.so"];
-        let mut loaded_lib = None;
-
+        let dll_names = ["mpv-2.dll", "mpv-1.dll", "libmpv-2.dll", "libmpv-1.dll", "mpv.dll"];
         for &name in &dll_names {
             if let Ok(lib) = Library::new(name) {
-                loaded_lib = Some(lib);
-                break;
-            }
-        }
-
-        if loaded_lib.is_none() {
-            if let Ok(mut exe_path) = std::env::current_exe() {
-                exe_path.pop(); 
-                for &name in &dll_names {
-                    let mut full_path = exe_path.clone();
-                    full_path.push(name);
-                    if let Ok(lib) = Library::new(full_path.as_os_str()) {
-                        loaded_lib = Some(lib);
-                        break;
-                    }
+                type AddRoFn = unsafe extern "C" fn(*mut c_void, *const c_char, *mut c_void, extern "C" fn(*mut c_void, *mut c_char, *mut MpvStreamCbInfo) -> c_int) -> c_int;
+                if let Ok(func) = lib.get::<AddRoFn>(b"mpv_stream_cb_add_ro\0") {
+                    let result = func(handle, protocol_name, ptr::null_mut(), custom_open_fn);
+                    std::mem::forget(lib); 
+                    return result >= 0;
                 }
             }
         }
-            
-        if let Some(lib) = loaded_lib {
-            type AddRoFn = unsafe extern "C" fn(*mut c_void, *const c_char, *mut c_void, extern "C" fn(*mut c_void, *mut c_char, *mut MpvStreamCbInfo) -> c_int) -> c_int;
-            if let Ok(func) = lib.get::<AddRoFn>(b"mpv_stream_cb_add_ro\0") {
-                let result = func(handle, protocol_name.as_ptr(), ptr::null_mut(), custom_open_fn);
-                std::mem::forget(lib); 
-                return result >= 0;
+    }
+    false
+}
+
+pub fn do_play(handle_address: i64) -> bool {
+    write_log!("do_play: Injecting 'loadfile' command with .mp4 extension...");
+    let handle = handle_address as *mut c_void;
+    unsafe {
+        let dll_names = ["mpv-2.dll", "mpv-1.dll", "libmpv-2.dll", "libmpv-1.dll", "mpv.dll"];
+        for &name in &dll_names {
+            if let Ok(lib) = Library::new(name) {
+                type CmdFn = unsafe extern "C" fn(*mut c_void, *const c_char) -> c_int;
+                if let Ok(func) = lib.get::<CmdFn>(b"mpv_command_string\0") {
+                    // پسوند طلایی mp4 که باعث میشه انجین درجا ویدیو رو بخونه
+                    let cmd = CString::new("loadfile safedrm://video.mp4").unwrap();
+                    let res = func(handle, cmd.as_ptr());
+                    std::mem::forget(lib);
+                    return res >= 0;
+                }
             }
         }
     }

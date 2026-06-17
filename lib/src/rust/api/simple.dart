@@ -23,3 +23,8 @@ bool bindSecureProtocol({required PlatformInt64 handleAddress}) => RustLib
     .instance
     .api
     .crateApiSimpleBindSecureProtocol(handleAddress: handleAddress);
+
+bool playSecureStream({required PlatformInt64 handleAddress}) => RustLib
+    .instance
+    .api
+    .crateApiSimplePlaySecureStream(handleAddress: handleAddress);

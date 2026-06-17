@@ -47,8 +47,6 @@ class _SecurePlayerScreenState extends State<SecurePlayerScreen> {
     }
 
     final nativePlayer = player.platform as dynamic;
-
-    // اینجا منتظر می‌مانیم تا آدرس حافظه پلیر به صورت کامل از انجین C دریافت شود
     final int handleAddress = await nativePlayer.handle;
 
     isEngineBound = bindSecureProtocol(handleAddress: handleAddress);
@@ -62,8 +60,6 @@ class _SecurePlayerScreenState extends State<SecurePlayerScreen> {
           localFilePath: widget.localFilePath!,
         ),
       );
-    } else {
-      debugPrint("FATAL: Failed to bind secure memory protocol.");
     }
   }
 
@@ -83,8 +79,13 @@ class _SecurePlayerScreenState extends State<SecurePlayerScreen> {
         body: BlocConsumer<VideoPlayerBloc, VideoPlayerState>(
           listener: (context, state) {
             if (state is VideoPlayerReady) {
-              // دیگه خودمون آدرس نمی‌سازیم، مستقیم از استیت می‌گیریم
-              player.open(Media(state.customUri));
+              player.open(Media('safedrm://video.mp4'));
+
+              Future.delayed(const Duration(milliseconds: 300), () async {
+                final nativePlayer = player.platform as dynamic;
+                final int handleAddress = await nativePlayer.handle;
+                playSecureStream(handleAddress: handleAddress);
+              });
             }
           },
           builder: (context, state) {
