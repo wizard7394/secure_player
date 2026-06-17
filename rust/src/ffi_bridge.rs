@@ -6,8 +6,13 @@ use std::path::PathBuf;
 use std::ptr;
 use libloading::Library;
 use aes::cipher::{KeyIvInit, StreamCipher, StreamCipherSeek};
+use sha2::{Sha256, Digest};
 
 type Aes256Ctr = ctr::Ctr128BE<aes::Aes256>;
+
+const TRUSTED_HASHES: &[&str] = &[
+    "d5f0694b08c124e785d858d00082f3e3b158dd9138bfc48c0382bf1eb443a5fc",
+];
 
 fn get_log_path() -> PathBuf {
     let mut path = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("."));
@@ -26,6 +31,31 @@ macro_rules! write_log {
             }
         }
     }
+}
+
+fn verify_engine_integrity(file_path: &PathBuf) -> bool {
+    let mut file = match File::open(file_path) {
+        Ok(f) => f,
+        Err(_) => return false,
+    };
+    
+    let mut hasher = Sha256::new();
+    if std::io::copy(&mut file, &mut hasher).is_err() {
+        return false;
+    }
+    
+    let hash_result = format!("{:x}", hasher.finalize());
+    write_log!("[SECURITY] Engine SHA-256 Calculated: {}", hash_result);
+    
+    for &trusted in TRUSTED_HASHES {
+        if hash_result == trusted {
+            write_log!("[SECURITY] Hash matched! Engine is authentic and untampered.");
+            return true;
+        }
+    }
+    
+    write_log!("[FATAL] ENGINE HASH MISMATCH! Possible DLL Hijacking or corrupted binary detected.");
+    false
 }
 
 #[repr(C)]
@@ -109,12 +139,14 @@ pub extern "C" fn custom_read_fn(cookie: *mut c_void, buf: *mut c_char, size: u6
         }
         
         unsafe { ptr::copy_nonoverlapping(temp_buf.as_ptr(), dest_buf, read_bytes); }
+        
+        temp_buf.fill(0);
+        
         dest_buf = unsafe { dest_buf.add(read_bytes) };
         bytes_fulfilled += read_bytes as u64;
         ctx.logical_offset += read_bytes as u64;
     }
     
-    write_log!("[READ] Requested: {}, Served: {}, New Offset: {}", size, bytes_fulfilled, ctx.logical_offset);
     bytes_fulfilled as i64
 }
 
@@ -123,7 +155,6 @@ pub extern "C" fn custom_seek_fn(cookie: *mut c_void, offset: i64) -> i64 {
     let ctx = unsafe { &mut *(cookie as *mut DrmStreamContext) };
     if offset < 0 || offset as u64 > ctx.logical_size { return -1; }
     ctx.logical_offset = offset as u64;
-    write_log!("[SEEK] Engine jumped to logical offset: {}", offset);
     offset
 }
 
@@ -134,7 +165,11 @@ pub extern "C" fn custom_size_fn(cookie: *mut c_void) -> i64 {
 }
 
 pub extern "C" fn custom_close_fn(cookie: *mut c_void) {
-    if !cookie.is_null() { unsafe { let _ = Box::from_raw(cookie as *mut DrmStreamContext); } }
+    if !cookie.is_null() { 
+        unsafe { let _ = Box::from_raw(cookie as *mut DrmStreamContext); } 
+    }
+    crate::api::simple::clear_decryption_keys();
+    write_log!("[SECURITY] Stream closed. Keys purged from memory.");
 }
 
 pub extern "C" fn custom_open_fn(
@@ -173,8 +208,6 @@ pub extern "C" fn custom_open_fn(
         (chunks * 2_097_152) + remainder.saturating_sub(16)
     };
     
-    write_log!("[OPEN] File Engine Initialized. Plaintext: {}, Virtual Size: {}", is_plaintext, logical_size);
-    
     let stream_ctx = Box::new(DrmStreamContext { 
         file, 
         logical_size, 
@@ -193,21 +226,47 @@ pub extern "C" fn custom_open_fn(
     0
 }
 
+fn get_absolute_library_path() -> Option<PathBuf> {
+    if let Ok(mut exe_path) = std::env::current_exe() {
+        exe_path.pop();
+        let dll_names = ["mpv-2.dll", "mpv-1.dll", "libmpv-2.dll", "libmpv-1.dll", "mpv.dll", "libmpv.dylib", "libmpv.so.2", "libmpv.so"];
+        for &name in &dll_names {
+            let mut full_path = exe_path.clone();
+            full_path.push(name);
+            if full_path.exists() {
+                return Some(full_path);
+            }
+        }
+    }
+    None
+}
+
 pub fn do_bind(handle_address: i64) -> bool {
     let _ = std::fs::remove_file(get_log_path());
+    write_log!("========== HOOK INITIALIZED ==========");
+    
+    let target_path = match get_absolute_library_path() {
+        Some(path) => path,
+        None => {
+            write_log!("[FATAL] Could not locate engine library next to the executable.");
+            return false;
+        }
+    };
+
+    if !verify_engine_integrity(&target_path) {
+        return false;
+    }
+
     let handle = handle_address as *mut c_void;
     let protocol_name = CString::new("safedrm").unwrap().into_raw(); 
     
     unsafe {
-        let dll_names = ["mpv-2.dll", "mpv-1.dll", "libmpv-2.dll", "libmpv-1.dll", "mpv.dll"];
-        for &name in &dll_names {
-            if let Ok(lib) = Library::new(name) {
-                type AddRoFn = unsafe extern "C" fn(*mut c_void, *const c_char, *mut c_void, extern "C" fn(*mut c_void, *mut c_char, *mut MpvStreamCbInfo) -> c_int) -> c_int;
-                if let Ok(func) = lib.get::<AddRoFn>(b"mpv_stream_cb_add_ro\0") {
-                    let result = func(handle, protocol_name, ptr::null_mut(), custom_open_fn);
-                    std::mem::forget(lib); 
-                    return result >= 0;
-                }
+        if let Ok(lib) = Library::new(target_path.as_os_str()) {
+            type AddRoFn = unsafe extern "C" fn(*mut c_void, *const c_char, *mut c_void, extern "C" fn(*mut c_void, *mut c_char, *mut MpvStreamCbInfo) -> c_int) -> c_int;
+            if let Ok(func) = lib.get::<AddRoFn>(b"mpv_stream_cb_add_ro\0") {
+                let result = func(handle, protocol_name, ptr::null_mut(), custom_open_fn);
+                std::mem::forget(lib); 
+                return result >= 0;
             }
         }
     }
@@ -215,20 +274,20 @@ pub fn do_bind(handle_address: i64) -> bool {
 }
 
 pub fn do_play(handle_address: i64) -> bool {
-    write_log!("do_play: Injecting 'loadfile' command with .mp4 extension...");
+    let target_path = match get_absolute_library_path() {
+        Some(path) => path,
+        None => return false,
+    };
+
     let handle = handle_address as *mut c_void;
     unsafe {
-        let dll_names = ["mpv-2.dll", "mpv-1.dll", "libmpv-2.dll", "libmpv-1.dll", "mpv.dll"];
-        for &name in &dll_names {
-            if let Ok(lib) = Library::new(name) {
-                type CmdFn = unsafe extern "C" fn(*mut c_void, *const c_char) -> c_int;
-                if let Ok(func) = lib.get::<CmdFn>(b"mpv_command_string\0") {
-                    // پسوند طلایی mp4 که باعث میشه انجین درجا ویدیو رو بخونه
-                    let cmd = CString::new("loadfile safedrm://video.mp4").unwrap();
-                    let res = func(handle, cmd.as_ptr());
-                    std::mem::forget(lib);
-                    return res >= 0;
-                }
+        if let Ok(lib) = Library::new(target_path.as_os_str()) {
+            type CmdFn = unsafe extern "C" fn(*mut c_void, *const c_char) -> c_int;
+            if let Ok(func) = lib.get::<CmdFn>(b"mpv_command_string\0") {
+                let cmd = CString::new("loadfile safedrm://video.mp4").unwrap();
+                let res = func(handle, cmd.as_ptr());
+                std::mem::forget(lib);
+                return res >= 0;
             }
         }
     }

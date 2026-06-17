@@ -25,6 +25,19 @@ pub fn set_decryption_keys(key: Vec<u8>, iv: Vec<u8>, file_path: String) {
 }
 
 #[frb(sync)]
+pub fn clear_decryption_keys() {
+    let mut state = DECRYPTION_STATE.lock().unwrap();
+    
+    // Security: Overwrite keys with zeros before clearing to prevent memory scraping
+    for byte in state.key.iter_mut() { *byte = 0; }
+    for byte in state.iv.iter_mut() { *byte = 0; }
+    
+    state.key.clear();
+    state.iv.clear();
+    state.file_path.clear();
+}
+
+#[frb(sync)]
 pub fn bind_secure_protocol(handle_address: i64) -> bool {
     crate::ffi_bridge::do_bind(handle_address)
 }

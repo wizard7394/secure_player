@@ -19,6 +19,9 @@ void setDecryptionKeys({
   filePath: filePath,
 );
 
+void clearDecryptionKeys() =>
+    RustLib.instance.api.crateApiSimpleClearDecryptionKeys();
+
 bool bindSecureProtocol({required PlatformInt64 handleAddress}) => RustLib
     .instance
     .api

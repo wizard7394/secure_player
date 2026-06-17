@@ -97,10 +97,11 @@ class _SecurePlayerScreenState extends State<SecurePlayerScreen> {
                     CircularProgressIndicator(color: Color(0xFF00E676)),
                     SizedBox(height: 16),
                     Text(
-                      "Injecting Decryption Keys to Memory...",
+                      "Loading video...",
                       style: TextStyle(
-                        color: Colors.white,
-                        fontFamily: 'monospace',
+                        color: Colors.white70,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ],
