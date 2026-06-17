@@ -42,14 +42,8 @@ pub extern "C" fn custom_read_fn(cookie: *mut c_void, buf: *mut c_char, size: u6
             
             if key.len() == 16 || key.len() == 32 {
                 let mut final_iv = vec![0u8; 16];
-                
-                if iv.len() == 12 {
-                    final_iv[..12].copy_from_slice(iv);
-                    final_iv[15] = 2; // استاندارد کانتر در AES-GCM
-                } else {
-                    let iv_len = std::cmp::min(iv.len(), 16);
-                    if iv_len > 0 { final_iv[..iv_len].copy_from_slice(&iv[..iv_len]); }
-                }
+                let iv_len = std::cmp::min(iv.len(), 16);
+                if iv_len > 0 { final_iv[..iv_len].copy_from_slice(&iv[..iv_len]); }
 
                 if key.len() == 16 {
                     if let Ok(mut cipher) = Aes128Ctr::new_from_slices(key, &final_iv) {
@@ -68,7 +62,10 @@ pub extern "C" fn custom_read_fn(cookie: *mut c_void, buf: *mut c_char, size: u6
             ctx.current_offset += bytes_read as u64;
             bytes_read as i64
         }
-        Err(_) => -1
+        Err(e) => {
+            println!("RUST_ENGINE: [ERROR] Failed to read: {:?}", e);
+            -1
+        }
     }
 }
 
@@ -102,18 +99,24 @@ pub extern "C" fn custom_open_fn(
 ) -> c_int {
     if cb_info.is_null() { return -1; }
     
-    // مسیر امن و قطعی را مستقیم از مموری می‌خوانیم نه از URL!
     let state = crate::api::simple::DECRYPTION_STATE.lock().unwrap();
     let file_path = state.file_path.clone();
+    
+    println!("RUST_ENGINE: Opening absolute path -> {}", file_path);
     
     if file_path.is_empty() { return -1; }
     
     let file = match File::open(&file_path) {
         Ok(f) => f,
-        Err(_) => return -1,
+        Err(e) => {
+            println!("RUST_ENGINE: [FATAL] Path not found: {:?}", e);
+            return -1;
+        }
     };
     
     let file_size = file.metadata().unwrap().len();
+    println!("RUST_ENGINE: File opened. Size: {} bytes", file_size);
+    
     let stream_ctx = Box::new(DrmStreamContext { file, file_size, current_offset: 0 });
     
     unsafe {

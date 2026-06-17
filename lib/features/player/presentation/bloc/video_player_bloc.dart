@@ -19,8 +19,9 @@ class VideoPlayerBloc extends Bloc<VideoPlayerEvent, VideoPlayerState> {
 
   List<int> _parseKey(String input) {
     input = input.trim().replaceAll('"', '');
-    final hexRegex = RegExp(r'^[0-9a-fA-F]+$');
 
+    // تشخیص هگزادسیمال
+    final hexRegex = RegExp(r'^[0-9a-fA-F]+$');
     if (input.length % 2 == 0 && hexRegex.hasMatch(input)) {
       List<int> bytes = [];
       for (int i = 0; i < input.length; i += 2) {
@@ -28,7 +29,18 @@ class VideoPlayerBloc extends Bloc<VideoPlayerEvent, VideoPlayerState> {
       }
       return bytes;
     }
-    return base64Decode(input);
+
+    // تشخیص IV خام 16 بایتی (UTF-8)
+    if (input.length == 16 && !input.contains('=')) {
+      return utf8.encode(input);
+    }
+
+    // در غیر این صورت Base64
+    try {
+      return base64Decode(input);
+    } catch (e) {
+      return utf8.encode(input); // فال‌بک نهایی
+    }
   }
 
   void _onInitializeVideo(
@@ -47,6 +59,9 @@ class VideoPlayerBloc extends Bloc<VideoPlayerEvent, VideoPlayerState> {
       final aesKey = _parseKey(responseData['aes_key']);
       final aesIv = _parseKey(responseData['aes_iv']);
 
+      print("DEBUG: Final Key Length -> ${aesKey.length} bytes");
+      print("DEBUG: Final IV Length -> ${aesIv.length} bytes");
+
       setDecryptionKeys(key: aesKey, iv: aesIv, filePath: event.localFilePath);
 
       final String customUri =
@@ -56,7 +71,7 @@ class VideoPlayerBloc extends Bloc<VideoPlayerEvent, VideoPlayerState> {
         VideoPlayerReady(
           isPlaying: false,
           currentPosition: Duration.zero,
-          totalDuration: Duration(minutes: 45, seconds: 30),
+          totalDuration: const Duration(minutes: 45, seconds: 30),
           isMuted: false,
           customUri: customUri,
         ),
