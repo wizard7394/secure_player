@@ -1,4 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
+import 'package:secure_player/src/rust/api/simple.dart';
+import '../../../../core/di/injection_container.dart' as di;
+import '../bloc/video_player_bloc.dart';
+import '../bloc/video_player_event.dart';
+import '../bloc/video_player_state.dart';
 
 class SecurePlayerScreen extends StatefulWidget {
   final String courseId;
@@ -19,38 +27,109 @@ class SecurePlayerScreen extends StatefulWidget {
 }
 
 class _SecurePlayerScreenState extends State<SecurePlayerScreen> {
+  late final Player player;
+  late final VideoController controller;
+  late final VideoPlayerBloc _bloc;
+  bool isEngineBound = false;
+
+  @override
+  void initState() {
+    super.initState();
+    player = Player();
+    controller = VideoController(player);
+    _bloc = di.sl<VideoPlayerBloc>();
+    _initSecureEngine();
+  }
+
+  Future<void> _initSecureEngine() async {
+    if (widget.localFilePath == null || widget.localFilePath!.isEmpty) {
+      return;
+    }
+
+    final nativePlayer = player.platform as dynamic;
+
+    // اینجا منتظر می‌مانیم تا آدرس حافظه پلیر به صورت کامل از انجین C دریافت شود
+    final int handleAddress = await nativePlayer.handle;
+
+    isEngineBound = bindSecureProtocol(handleAddress: handleAddress);
+
+    if (isEngineBound) {
+      _bloc.add(
+        InitializeVideo(
+          courseId: widget.courseId,
+          licenseKey: 'DUMMY_LICENSE_TEST',
+          localFilePath: widget.localFilePath!,
+        ),
+      );
+    } else {
+      debugPrint("FATAL: Failed to bind secure memory protocol.");
+    }
+  }
+
+  @override
+  void dispose() {
+    player.dispose();
+    _bloc.close();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Color(0xFF00E676)),
-        title: const Text(
-          'Offline Player Engine',
-          style: TextStyle(color: Color(0xFF00E676), fontSize: 14),
-        ),
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.security, color: Color(0xFF00E676), size: 64),
-            const SizedBox(height: 16),
-            Text(
-              'Vault UUID: ${widget.vaultData?['uuid'] ?? 'NOT ASSIGNED'}',
-              style: const TextStyle(
-                color: Colors.white54,
-                fontFamily: 'monospace',
+    return BlocProvider.value(
+      value: _bloc,
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: BlocConsumer<VideoPlayerBloc, VideoPlayerState>(
+          listener: (context, state) {
+            if (state is VideoPlayerReady) {
+              final customUri = 'safedrm://${widget.localFilePath}';
+              player.open(Media(customUri));
+            }
+          },
+          builder: (context, state) {
+            if (state is VideoPlayerInitial || state is VideoPlayerLoading) {
+              return const Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(color: Color(0xFF00E676)),
+                    SizedBox(height: 16),
+                    Text(
+                      "Injecting Decryption Keys to Memory...",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            return SafeArea(
+              child: Stack(
+                children: [
+                  Center(
+                    child: Video(
+                      controller: controller,
+                      controls: AdaptiveVideoControls,
+                    ),
+                  ),
+                  Positioned(
+                    top: 16,
+                    left: 16,
+                    child: IconButton(
+                      icon: const Icon(
+                        Icons.arrow_back_ios,
+                        color: Colors.white,
+                      ),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ),
+                ],
               ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Ready for Rust Decryption Hook & Download Manager',
-              style: TextStyle(color: Colors.white),
-            ),
-          ],
+            );
+          },
         ),
       ),
     );
