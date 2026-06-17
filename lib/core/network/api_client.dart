@@ -64,6 +64,7 @@ class ApiClient {
 
   Future<Map<String, dynamic>> fetchVideoKeys(
     String courseId,
+    String videoId,
     String licenseKey,
   ) async {
     final deviceHash = await _security.getDeviceHash();
@@ -80,7 +81,7 @@ class ApiClient {
     final hwToken = authResponse.data['payload']['access_token'];
 
     final keyResponse = await _dio.get(
-      'https://api.devstorage.site/hls/$courseId/vid_1/keys',
+      'https://api.devstorage.site/drm/$courseId/vid_$videoId/keys',
       options: Options(headers: {'Authorization': 'Bearer $hwToken'}),
     );
 

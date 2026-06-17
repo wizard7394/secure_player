@@ -1,5 +1,5 @@
 use std::os::raw::{c_char, c_void, c_int};
-use std::ffi::{CStr, CString};
+use std::ffi::CString;
 use std::io::{Read, Seek, SeekFrom};
 use std::fs::File;
 use std::ptr;
@@ -41,13 +41,23 @@ pub extern "C" fn custom_read_fn(cookie: *mut c_void, buf: *mut c_char, size: u6
             let iv = &state.iv;
             
             if key.len() == 16 || key.len() == 32 {
+                let mut final_iv = vec![0u8; 16];
+                
+                if iv.len() == 12 {
+                    final_iv[..12].copy_from_slice(iv);
+                    final_iv[15] = 2; // استاندارد کانتر در AES-GCM
+                } else {
+                    let iv_len = std::cmp::min(iv.len(), 16);
+                    if iv_len > 0 { final_iv[..iv_len].copy_from_slice(&iv[..iv_len]); }
+                }
+
                 if key.len() == 16 {
-                    if let Ok(mut cipher) = Aes128Ctr::new_from_slices(key, iv) {
+                    if let Ok(mut cipher) = Aes128Ctr::new_from_slices(key, &final_iv) {
                         cipher.seek(ctx.current_offset);
                         cipher.apply_keystream(&mut temp_buffer[..bytes_read]);
                     }
                 } else if key.len() == 32 {
-                    if let Ok(mut cipher) = Aes256Ctr::new_from_slices(key, iv) {
+                    if let Ok(mut cipher) = Aes256Ctr::new_from_slices(key, &final_iv) {
                         cipher.seek(ctx.current_offset);
                         cipher.apply_keystream(&mut temp_buffer[..bytes_read]);
                     }
@@ -58,7 +68,7 @@ pub extern "C" fn custom_read_fn(cookie: *mut c_void, buf: *mut c_char, size: u6
             ctx.current_offset += bytes_read as u64;
             bytes_read as i64
         }
-        Err(_) => -1,
+        Err(_) => -1
     }
 }
 
@@ -82,20 +92,21 @@ pub extern "C" fn custom_size_fn(cookie: *mut c_void) -> i64 {
 }
 
 pub extern "C" fn custom_close_fn(cookie: *mut c_void) {
-    if !cookie.is_null() { 
-        unsafe { let _ = Box::from_raw(cookie as *mut DrmStreamContext); } 
-    }
+    if !cookie.is_null() { unsafe { let _ = Box::from_raw(cookie as *mut DrmStreamContext); } }
 }
 
 pub extern "C" fn custom_open_fn(
     _cookie: *mut c_void,
-    uri: *mut c_char,
+    _uri: *mut c_char,
     cb_info: *mut MpvStreamCbInfo,
 ) -> c_int {
-    if uri.is_null() || cb_info.is_null() { return -1; }
+    if cb_info.is_null() { return -1; }
     
-    let uri_str = unsafe { CStr::from_ptr(uri).to_string_lossy().into_owned() };
-    let file_path = uri_str.replace("safedrm://", "");
+    // مسیر امن و قطعی را مستقیم از مموری می‌خوانیم نه از URL!
+    let state = crate::api::simple::DECRYPTION_STATE.lock().unwrap();
+    let file_path = state.file_path.clone();
+    
+    if file_path.is_empty() { return -1; }
     
     let file = match File::open(&file_path) {
         Ok(f) => f,
@@ -103,11 +114,7 @@ pub extern "C" fn custom_open_fn(
     };
     
     let file_size = file.metadata().unwrap().len();
-    let stream_ctx = Box::new(DrmStreamContext { 
-        file, 
-        file_size,
-        current_offset: 0,
-    });
+    let stream_ctx = Box::new(DrmStreamContext { file, file_size, current_offset: 0 });
     
     unsafe {
         (*cb_info).cookie = Box::into_raw(stream_ctx) as *mut c_void;
@@ -125,29 +132,13 @@ pub fn do_bind(handle_address: i64) -> bool {
     let protocol_name = CString::new("safedrm").unwrap();
     
     unsafe {
-        println!("RUST_ENGINE: Initializing memory hooks...");
-        
-        let dll_names = [
-            "mpv-2.dll", 
-            "mpv-1.dll", 
-            "libmpv-2.dll", 
-            "libmpv-1.dll", 
-            "mpv.dll", 
-            "libmpv.dylib", 
-            "libmpv.so.2", 
-            "libmpv.so"
-        ];
-        
+        let dll_names = ["mpv-2.dll", "mpv-1.dll", "libmpv-2.dll", "libmpv-1.dll", "mpv.dll", "libmpv.dylib", "libmpv.so.2", "libmpv.so"];
         let mut loaded_lib = None;
 
         for &name in &dll_names {
-            match Library::new(name) {
-                Ok(lib) => {
-                    println!("RUST_ENGINE: Successfully hooked into running module -> {}", name);
-                    loaded_lib = Some(lib);
-                    break;
-                }
-                Err(_) => {} 
+            if let Ok(lib) = Library::new(name) {
+                loaded_lib = Some(lib);
+                break;
             }
         }
 
@@ -157,37 +148,21 @@ pub fn do_bind(handle_address: i64) -> bool {
                 for &name in &dll_names {
                     let mut full_path = exe_path.clone();
                     full_path.push(name);
-                    match Library::new(full_path.as_os_str()) {
-                        Ok(lib) => {
-                            println!("RUST_ENGINE: Successfully loaded from absolute path -> {:?}", full_path);
-                            loaded_lib = Some(lib);
-                            break;
-                        }
-                        Err(_) => {}
+                    if let Ok(lib) = Library::new(full_path.as_os_str()) {
+                        loaded_lib = Some(lib);
+                        break;
                     }
                 }
             }
         }
             
-        match loaded_lib {
-            Some(lib) => {
-                println!("RUST_ENGINE: Binary loaded. Mapping symbols...");
-                type AddRoFn = unsafe extern "C" fn(
-                    *mut c_void, *const c_char, *mut c_void, 
-                    extern "C" fn(*mut c_void, *mut c_char, *mut MpvStreamCbInfo) -> c_int
-                ) -> c_int;
-                
-                match lib.get::<AddRoFn>(b"mpv_stream_cb_add_ro\0") {
-                    Ok(func) => {
-                        let result = func(handle, protocol_name.as_ptr(), ptr::null_mut(), custom_open_fn);
-                        println!("RUST_ENGINE: Handshake completed with code: {}", result);
-                        std::mem::forget(lib); 
-                        return result >= 0;
-                    }
-                    Err(err) => println!("RUST_ENGINE: Symbol 'mpv_stream_cb_add_ro' not found -> {:?}", err),
-                }
+        if let Some(lib) = loaded_lib {
+            type AddRoFn = unsafe extern "C" fn(*mut c_void, *const c_char, *mut c_void, extern "C" fn(*mut c_void, *mut c_char, *mut MpvStreamCbInfo) -> c_int) -> c_int;
+            if let Ok(func) = lib.get::<AddRoFn>(b"mpv_stream_cb_add_ro\0") {
+                let result = func(handle, protocol_name.as_ptr(), ptr::null_mut(), custom_open_fn);
+                std::mem::forget(lib); 
+                return result >= 0;
             }
-            None => println!("RUST_ENGINE: FATAL -> Could not find any mpv binary on this system!"),
         }
     }
     false

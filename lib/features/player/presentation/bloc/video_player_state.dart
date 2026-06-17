@@ -20,12 +20,14 @@ class VideoPlayerReady extends VideoPlayerState {
   final Duration currentPosition;
   final Duration totalDuration;
   final bool isMuted;
+  final String customUri;
 
   const VideoPlayerReady({
     required this.isPlaying,
     required this.currentPosition,
     required this.totalDuration,
     required this.isMuted,
+    required this.customUri,
   });
 
   VideoPlayerReady copyWith({
@@ -33,12 +35,14 @@ class VideoPlayerReady extends VideoPlayerState {
     Duration? currentPosition,
     Duration? totalDuration,
     bool? isMuted,
+    String? customUri,
   }) {
     return VideoPlayerReady(
       isPlaying: isPlaying ?? this.isPlaying,
       currentPosition: currentPosition ?? this.currentPosition,
       totalDuration: totalDuration ?? this.totalDuration,
       isMuted: isMuted ?? this.isMuted,
+      customUri: customUri ?? this.customUri,
     );
   }
 
@@ -48,13 +52,6 @@ class VideoPlayerReady extends VideoPlayerState {
     currentPosition,
     totalDuration,
     isMuted,
+    customUri,
   ];
-}
-
-class VideoPlayerError extends VideoPlayerState {
-  final String message;
-  const VideoPlayerError(this.message);
-
-  @override
-  List<Object?> get props => [message];
 }

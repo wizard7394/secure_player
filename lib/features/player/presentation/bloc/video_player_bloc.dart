@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:flutter_bloc/flutter_bloc.dart';
-// استفاده از ایمپورت پکیجی برای جلوگیری از گم شدن مسیر فایل‌های راست
 import 'package:secure_player/src/rust/api/simple.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/di/injection_container.dart' as di;
@@ -18,6 +17,20 @@ class VideoPlayerBloc extends Bloc<VideoPlayerEvent, VideoPlayerState> {
     on<ToggleMute>(_onToggleMute);
   }
 
+  List<int> _parseKey(String input) {
+    input = input.trim().replaceAll('"', '');
+    final hexRegex = RegExp(r'^[0-9a-fA-F]+$');
+
+    if (input.length % 2 == 0 && hexRegex.hasMatch(input)) {
+      List<int> bytes = [];
+      for (int i = 0; i < input.length; i += 2) {
+        bytes.add(int.parse(input.substring(i, i + 2), radix: 16));
+      }
+      return bytes;
+    }
+    return base64Decode(input);
+  }
+
   void _onInitializeVideo(
     InitializeVideo event,
     Emitter<VideoPlayerState> emit,
@@ -25,34 +38,30 @@ class VideoPlayerBloc extends Bloc<VideoPlayerEvent, VideoPlayerState> {
     emit(const VideoPlayerLoading());
 
     try {
-      print("Fetching Decryption Keys...");
-
       final responseData = await apiClient.fetchVideoKeys(
         event.courseId,
+        event.videoId,
         event.licenseKey,
       );
 
-      final aesKey = base64Decode(responseData['aes_key']);
-      final aesIv = base64Decode(responseData['aes_iv']);
+      final aesKey = _parseKey(responseData['aes_key']);
+      final aesIv = _parseKey(responseData['aes_iv']);
 
-      // تزریق کلیدها مستقیماً به حافظه انجین
-      setDecryptionKeys(key: aesKey, iv: aesIv);
+      setDecryptionKeys(key: aesKey, iv: aesIv, filePath: event.localFilePath);
 
-      // استفاده از مسیر داینامیکی که انجین سرچ پیدا کرده بود
-      final String customUri = 'safedrm://${event.localFilePath}';
-
-      print("Ready to stream from memory: $customUri");
+      final String customUri =
+          'safedrm://bypass_${DateTime.now().millisecondsSinceEpoch}';
 
       emit(
-        const VideoPlayerReady(
+        VideoPlayerReady(
           isPlaying: false,
           currentPosition: Duration.zero,
           totalDuration: Duration(minutes: 45, seconds: 30),
           isMuted: false,
+          customUri: customUri,
         ),
       );
     } catch (e) {
-      print("Error: $e");
       emit(const VideoPlayerInitial());
     }
   }

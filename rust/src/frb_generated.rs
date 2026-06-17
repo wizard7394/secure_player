@@ -101,10 +101,11 @@ fn wire__crate__api__simple__set_decryption_keys_impl(
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
             let api_key = <Vec<u8>>::sse_decode(&mut deserializer);
             let api_iv = <Vec<u8>>::sse_decode(&mut deserializer);
+            let api_file_path = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             transform_result_sse::<_, ()>((move || {
                 let output_ok = Result::<_, ()>::Ok({
-                    crate::api::simple::set_decryption_keys(api_key, api_iv);
+                    crate::api::simple::set_decryption_keys(api_key, api_iv, api_file_path);
                 })?;
                 Ok(output_ok)
             })())
@@ -113,6 +114,14 @@ fn wire__crate__api__simple__set_decryption_keys_impl(
 }
 
 // Section: dart2rust
+
+impl SseDecode for String {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <Vec<u8>>::sse_decode(deserializer);
+        return String::from_utf8(inner).unwrap();
+    }
+}
 
 impl SseDecode for bool {
     // Codec=Sse (Serialization based), see doc to use other codecs
@@ -187,6 +196,13 @@ fn pde_ffi_dispatcher_sync_impl(
 }
 
 // Section: rust2dart
+
+impl SseEncode for String {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <Vec<u8>>::sse_encode(self.into_bytes(), serializer);
+    }
+}
 
 impl SseEncode for bool {
     // Codec=Sse (Serialization based), see doc to use other codecs

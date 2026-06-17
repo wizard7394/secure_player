@@ -57,6 +57,7 @@ class _SecurePlayerScreenState extends State<SecurePlayerScreen> {
       _bloc.add(
         InitializeVideo(
           courseId: widget.courseId,
+          videoId: widget.videoId.toString(),
           licenseKey: 'DUMMY_LICENSE_TEST',
           localFilePath: widget.localFilePath!,
         ),
@@ -82,8 +83,8 @@ class _SecurePlayerScreenState extends State<SecurePlayerScreen> {
         body: BlocConsumer<VideoPlayerBloc, VideoPlayerState>(
           listener: (context, state) {
             if (state is VideoPlayerReady) {
-              final customUri = 'safedrm://${widget.localFilePath}';
-              player.open(Media(customUri));
+              // دیگه خودمون آدرس نمی‌سازیم، مستقیم از استیت می‌گیریم
+              player.open(Media(state.customUri));
             }
           },
           builder: (context, state) {

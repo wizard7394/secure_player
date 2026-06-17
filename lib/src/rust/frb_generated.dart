@@ -81,6 +81,7 @@ abstract class RustLibApi extends BaseApi {
   void crateApiSimpleSetDecryptionKeys({
     required List<int> key,
     required List<int> iv,
+    required String filePath,
   });
 }
 
@@ -124,6 +125,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   void crateApiSimpleSetDecryptionKeys({
     required List<int> key,
     required List<int> iv,
+    required String filePath,
   }) {
     return handler.executeSync(
       SyncTask(
@@ -131,6 +133,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_list_prim_u_8_loose(key, serializer);
           sse_encode_list_prim_u_8_loose(iv, serializer);
+          sse_encode_String(filePath, serializer);
           return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 2)!;
         },
         codec: SseCodec(
@@ -138,7 +141,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeErrorData: null,
         ),
         constMeta: kCrateApiSimpleSetDecryptionKeysConstMeta,
-        argValues: [key, iv],
+        argValues: [key, iv, filePath],
         apiImpl: this,
       ),
     );
@@ -147,8 +150,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TaskConstMeta get kCrateApiSimpleSetDecryptionKeysConstMeta =>
       const TaskConstMeta(
         debugName: "set_decryption_keys",
-        argNames: ["key", "iv"],
+        argNames: ["key", "iv", "filePath"],
       );
+
+  @protected
+  String dco_decode_String(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as String;
+  }
 
   @protected
   bool dco_decode_bool(dynamic raw) {
@@ -184,6 +193,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   void dco_decode_unit(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return;
+  }
+
+  @protected
+  String sse_decode_String(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_list_prim_u_8_strict(deserializer);
+    return utf8.decoder.convert(inner);
   }
 
   @protected
@@ -227,6 +243,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   int sse_decode_i_32(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getInt32();
+  }
+
+  @protected
+  void sse_encode_String(String self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_list_prim_u_8_strict(utf8.encoder.convert(self), serializer);
   }
 
   @protected
