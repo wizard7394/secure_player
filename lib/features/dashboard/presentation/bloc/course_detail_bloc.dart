@@ -1,6 +1,7 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
-import '../../../../core/network/api_client.dart';
+import '../../../../core/error/app_exceptions.dart';
+import '../../data/dashboard_repository.dart';
 
 abstract class CourseDetailEvent extends Equatable {
   const CourseDetailEvent();
@@ -26,10 +27,12 @@ class CourseDetailInitial extends CourseDetailState {}
 class CourseDetailLoading extends CourseDetailState {}
 
 class CourseDetailLoaded extends CourseDetailState {
-  final List<dynamic> sections;
-  const CourseDetailLoaded({required this.sections});
+  final Map<String, dynamic> courseData;
+
+  const CourseDetailLoaded({required this.courseData});
+
   @override
-  List<Object> get props => [sections];
+  List<Object> get props => [courseData];
 }
 
 class CourseDetailError extends CourseDetailState {
@@ -40,9 +43,10 @@ class CourseDetailError extends CourseDetailState {
 }
 
 class CourseDetailBloc extends Bloc<CourseDetailEvent, CourseDetailState> {
-  final ApiClient apiClient;
+  final DashboardRepository dashboardRepository;
 
-  CourseDetailBloc({required this.apiClient}) : super(CourseDetailInitial()) {
+  CourseDetailBloc({required this.dashboardRepository})
+    : super(CourseDetailInitial()) {
     on<FetchCourseContentEvent>(_onFetchContent);
   }
 
@@ -52,10 +56,14 @@ class CourseDetailBloc extends Bloc<CourseDetailEvent, CourseDetailState> {
   ) async {
     emit(CourseDetailLoading());
     try {
-      final sections = await apiClient.fetchCourseDetails(event.courseId);
-      emit(CourseDetailLoaded(sections: sections));
+      final courseData = await dashboardRepository.getCourseDetails(
+        event.courseId,
+      );
+      emit(CourseDetailLoaded(courseData: courseData));
+    } on AppException catch (e) {
+      emit(CourseDetailError(message: e.message));
     } catch (e) {
-      emit(CourseDetailError(message: e.toString()));
+      emit(const CourseDetailError(message: "An unexpected error occurred."));
     }
   }
 }

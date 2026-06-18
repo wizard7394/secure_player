@@ -28,9 +28,25 @@ class DashboardScreen extends StatelessWidget {
               );
             } else if (state is DashboardError) {
               return Center(
-                child: Text(
-                  'Error: ${state.message}',
-                  style: const TextStyle(color: Colors.redAccent),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      'Error: ${state.message}',
+                      style: const TextStyle(color: Colors.redAccent),
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF00E676),
+                        foregroundColor: Colors.black,
+                      ),
+                      onPressed: () {
+                        context.read<DashboardBloc>().add(FetchCoursesEvent());
+                      },
+                      child: const Text('Retry'),
+                    ),
+                  ],
                 ),
               );
             } else if (state is DashboardLoaded) {
@@ -43,35 +59,43 @@ class DashboardScreen extends StatelessWidget {
                   ),
                 );
               }
-              return ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: courses.length,
-                itemBuilder: (context, index) {
-                  final course = courses[index];
-                  return Card(
-                    color: const Color(0xFF141414),
-                    child: ListTile(
-                      title: Text(
-                        course['title'] ?? 'Unknown Course',
-                        style: const TextStyle(color: Colors.white),
-                      ),
-                      trailing: const Icon(
-                        Icons.arrow_forward_ios,
-                        color: Color(0xFF00E676),
-                      ),
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => CourseDetailScreen(
-                              courseId: course['id'].toString(),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  );
+              return RefreshIndicator(
+                color: const Color(0xFF00E676),
+                backgroundColor: const Color(0xFF141414),
+                onRefresh: () async {
+                  context.read<DashboardBloc>().add(FetchCoursesEvent());
                 },
+                child: ListView.builder(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(16),
+                  itemCount: courses.length,
+                  itemBuilder: (context, index) {
+                    final course = courses[index];
+                    return Card(
+                      color: const Color(0xFF141414),
+                      child: ListTile(
+                        title: Text(
+                          course['title'] ?? 'Unknown Course',
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                        trailing: const Icon(
+                          Icons.arrow_forward_ios,
+                          color: Color(0xFF00E676),
+                        ),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => CourseDetailScreen(
+                                courseId: course['id'].toString(),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    );
+                  },
+                ),
               );
             }
             return const SizedBox.shrink();

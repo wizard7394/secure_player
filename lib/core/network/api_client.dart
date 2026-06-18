@@ -1,7 +1,8 @@
-import 'dart:io';
+import 'dart:developer';
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../crypto/token_security.dart';
+import '../error/app_exceptions.dart';
 
 class ApiClient {
   final Dio _dio;
@@ -38,58 +39,74 @@ class ApiClient {
 
   Future<void> requestOtp(String phone) async {
     try {
-      await _dio.post('/auth/request-otp', data: {'phone_number': phone});
+      await _dio.post('/auth/request-otp', data: {'mobile': phone});
     } on DioException catch (e) {
-      print("DEBUG: API Error: ${e.response?.data}");
-      rethrow;
+      log("API Error: ${e.response?.data}", name: 'ApiClient');
+      throw ServerException(
+        e.response?.data['detail'] ?? "Failed to request OTP",
+      );
+    } catch (e) {
+      throw NetworkException(e.toString());
     }
   }
 
   Future<String> verifyOtp(String phone, String code) async {
-    final response = await _dio.post(
-      '/auth/verify-otp',
-      data: {'phone_number': phone, 'code': code},
-    );
+    try {
+      final deviceHash = await _security.getDeviceHash();
 
-    final token = response.data['access_token'];
-    final encryptedToken = await _security.encryptToken(token);
-    await _storage.write(key: 'jwt_token', value: encryptedToken);
-    return token;
+      final response = await _dio.post(
+        '/auth/verify-otp',
+        data: {'mobile': phone, 'code': code, 'hardware_id': deviceHash},
+      );
+
+      final token = response.data['access_token'];
+      final encryptedToken = await _security.encryptToken(token);
+      await _storage.write(key: 'jwt_token', value: encryptedToken);
+      return token;
+    } on DioException catch (e) {
+      log("Verify OTP Error: ${e.response?.data}", name: 'ApiClient');
+      throw ServerException(
+        e.response?.data['detail'] ?? "Invalid OTP or hardware mismatch",
+      );
+    } catch (e) {
+      throw NetworkException(e.toString());
+    }
   }
 
   Future<List<dynamic>> fetchCourses() async {
-    final response = await _dio.get('/dashboard/my-courses');
-    return response.data['courses'];
+    try {
+      final response = await _dio.get('/dashboard/my-courses');
+      return response.data is List
+          ? response.data
+          : (response.data['courses'] ?? []);
+    } on DioException catch (e) {
+      throw ServerException("Failed to fetch courses: ${e.message}");
+    }
   }
 
   Future<Map<String, dynamic>> fetchVideoKeys(
     String courseId,
     String videoId,
-    String licenseKey,
   ) async {
-    final deviceHash = await _security.getDeviceHash();
-
-    final authResponse = await _dio.post(
-      '/auth/hardware',
-      data: {
-        'license_key': licenseKey,
-        'hardware_hash': deviceHash,
-        'platform': Platform.operatingSystem,
-      },
-    );
-
-    final hwToken = authResponse.data['payload']['access_token'];
-
-    final keyResponse = await _dio.get(
-      'https://api.devstorage.site/drm/$courseId/vid_$videoId/keys',
-      options: Options(headers: {'Authorization': 'Bearer $hwToken'}),
-    );
-
-    return keyResponse.data;
+    try {
+      final keyResponse = await _dio.get(
+        'https://api.devstorage.site/drm/$courseId/vid_$videoId/keys',
+      );
+      return keyResponse.data;
+    } on DioException catch (e) {
+      log("DRM Key Error: ${e.response?.data}", name: 'ApiClient');
+      throw ServerException(
+        e.response?.data['detail'] ?? "Failed to fetch video keys",
+      );
+    }
   }
 
-  Future<List<dynamic>> fetchCourseDetails(String courseId) async {
-    final response = await _dio.get('/dashboard/course-content/$courseId');
-    return response.data['sections'];
+  Future<Map<String, dynamic>> fetchCourseDetails(String courseId) async {
+    try {
+      final response = await _dio.get('/course/$courseId');
+      return response.data;
+    } on DioException catch (e) {
+      throw ServerException("Failed to fetch course details: ${e.message}");
+    }
   }
 }

@@ -78,7 +78,7 @@ class CourseDetailScreen extends StatelessWidget {
                 ),
               );
             } else if (state is CourseDetailLoaded) {
-              final tree = state.sections;
+              final tree = state.courseData['sections'] as List<dynamic>? ?? [];
 
               if (tree.isEmpty) {
                 return const Center(
@@ -233,7 +233,7 @@ class _PlayerRecursiveNodeState extends State<PlayerRecursiveNode> {
         MaterialPageRoute(
           builder: (context) => SecurePlayerScreen(
             courseId: widget.courseId,
-            videoId: widget.node['id'],
+            videoId: widget.node['id'].toString(),
             vaultData: widget.node['vault'],
             localFilePath: activeFilePath,
           ),

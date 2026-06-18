@@ -56,7 +56,6 @@ class _SecurePlayerScreenState extends State<SecurePlayerScreen> {
         InitializeVideo(
           courseId: widget.courseId,
           videoId: widget.videoId.toString(),
-          licenseKey: 'DUMMY_LICENSE_TEST',
           localFilePath: widget.localFilePath!,
         ),
       );
@@ -79,7 +78,7 @@ class _SecurePlayerScreenState extends State<SecurePlayerScreen> {
         body: BlocConsumer<VideoPlayerBloc, VideoPlayerState>(
           listener: (context, state) {
             if (state is VideoPlayerReady) {
-              player.open(Media('safedrm://video.mp4'));
+              player.open(Media(state.customUri));
 
               Future.delayed(const Duration(milliseconds: 300), () async {
                 final nativePlayer = player.platform as dynamic;
@@ -97,7 +96,7 @@ class _SecurePlayerScreenState extends State<SecurePlayerScreen> {
                     CircularProgressIndicator(color: Color(0xFF00E676)),
                     SizedBox(height: 16),
                     Text(
-                      "Loading video...",
+                      "Loading secure stream...",
                       style: TextStyle(
                         color: Colors.white70,
                         fontSize: 14,

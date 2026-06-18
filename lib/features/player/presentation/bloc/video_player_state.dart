@@ -15,6 +15,15 @@ class VideoPlayerLoading extends VideoPlayerState {
   const VideoPlayerLoading();
 }
 
+class VideoPlayerError extends VideoPlayerState {
+  final String message;
+
+  const VideoPlayerError({required this.message});
+
+  @override
+  List<Object?> get props => [message];
+}
+
 class VideoPlayerReady extends VideoPlayerState {
   final bool isPlaying;
   final Duration currentPosition;

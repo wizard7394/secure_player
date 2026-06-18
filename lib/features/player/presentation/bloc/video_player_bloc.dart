@@ -1,15 +1,16 @@
 import 'dart:convert';
+import 'dart:developer';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:secure_player/src/rust/api/simple.dart';
-import '../../../../core/network/api_client.dart';
-import '../../../../core/di/injection_container.dart' as di;
+import '../../data/domain/repositories/video_stream_repository.dart';
 import 'video_player_event.dart';
 import 'video_player_state.dart';
 
 class VideoPlayerBloc extends Bloc<VideoPlayerEvent, VideoPlayerState> {
-  final ApiClient apiClient = di.sl<ApiClient>();
+  final VideoStreamRepository videoStreamRepository;
 
-  VideoPlayerBloc() : super(const VideoPlayerInitial()) {
+  VideoPlayerBloc({required this.videoStreamRepository})
+    : super(const VideoPlayerInitial()) {
     on<InitializeVideo>(_onInitializeVideo);
     on<PlayVideo>(_onPlayVideo);
     on<PauseVideo>(_onPauseVideo);
@@ -17,7 +18,7 @@ class VideoPlayerBloc extends Bloc<VideoPlayerEvent, VideoPlayerState> {
     on<ToggleMute>(_onToggleMute);
   }
 
-  // حالا پارسر فقط و فقط روی Base64 تمرکز می‌کنه تا طول بایت‌ها خراب نشن
+  // پارسر دقیق برای جلوگیری از خطای طول بایت در فرمت Base64
   List<int> _parseKey(String input) {
     input = input.trim().replaceAll('"', '');
     return base64Decode(input);
@@ -30,21 +31,23 @@ class VideoPlayerBloc extends Bloc<VideoPlayerEvent, VideoPlayerState> {
     emit(const VideoPlayerLoading());
 
     try {
-      final responseData = await apiClient.fetchVideoKeys(
+      final responseData = await videoStreamRepository.getVideoKeys(
         event.courseId,
         event.videoId,
-        event.licenseKey,
       );
 
       final aesKey = _parseKey(responseData['aes_key']);
       final aesIv = _parseKey(responseData['aes_iv']);
 
-      print("DEBUG: Final Key Length -> ${aesKey.length} bytes");
-      print("DEBUG: Final IV Length -> ${aesIv.length} bytes");
+      log(
+        "Final Key Length -> ${aesKey.length} bytes",
+        name: 'VideoPlayerBloc',
+      );
+      log("Final IV Length -> ${aesIv.length} bytes", name: 'VideoPlayerBloc');
 
       setDecryptionKeys(key: aesKey, iv: aesIv, filePath: event.localFilePath);
 
-      // آدرس فیک با فرمت استاندارد برای فریب مدیاکیت
+      // آدرس فیک با فرمت استاندارد برای فریب مدیاکیت و ریدایرکت به Rust
       final String customUri =
           'safedrm://localhost/bypass_video_${DateTime.now().millisecondsSinceEpoch}.mp4';
 
@@ -58,6 +61,7 @@ class VideoPlayerBloc extends Bloc<VideoPlayerEvent, VideoPlayerState> {
         ),
       );
     } catch (e) {
+      log("DRM Stream Error: $e", name: 'VideoPlayerBloc');
       emit(const VideoPlayerInitial());
     }
   }
