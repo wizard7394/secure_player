@@ -39,7 +39,12 @@ class ApiClient {
 
   Future<void> requestOtp(String phone) async {
     try {
-      await _dio.post('/auth/request-otp', data: {'mobile': phone});
+      // استخراج و ارسال هش سخت‌افزاری در مرحله اول
+      final deviceHash = await _security.getDeviceHash();
+      await _dio.post(
+        '/auth/request-otp',
+        data: {'mobile': phone, 'hardware_id': deviceHash},
+      );
     } on DioException catch (e) {
       log("API Error: ${e.response?.data}", name: 'ApiClient');
       throw ServerException(

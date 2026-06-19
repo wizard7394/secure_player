@@ -1,31 +1,23 @@
 import 'dart:convert';
-import 'dart:io';
 import 'dart:typed_data';
 import 'dart:developer';
 import 'package:crypto/crypto.dart';
 import 'package:encrypt/encrypt.dart' as enc;
-import 'package:device_info_plus/device_info_plus.dart';
 import '../error/app_exceptions.dart';
+import '../../src/rust/api/simple.dart';
 
 class TokenSecurity {
   final String _salt = "DevStorage_Secure_Salt_9988!";
 
   Future<String> _getHardwareId() async {
-    final deviceInfo = DeviceInfoPlugin();
     try {
-      if (Platform.isWindows) {
-        final info = await deviceInfo.windowsInfo;
-        return info.deviceId;
-      } else if (Platform.isMacOS) {
-        final info = await deviceInfo.macOsInfo;
-        return info.systemGUID ?? 'unknown_mac';
-      } else if (Platform.isLinux) {
-        final info = await deviceInfo.linuxInfo;
-        return info.machineId ?? 'unknown_linux';
+      final rawId = getSystemHardwareId();
+      if (rawId.startsWith("UNKNOWN_")) {
+        log("Warning: Hardware ID fallback triggered.", name: 'TokenSecurity');
       }
-      throw HardwareException("Unsupported operating system for DRM.");
+      return rawId;
     } catch (e) {
-      throw HardwareException("Failed to read hardware footprint: $e");
+      throw HardwareException("Failed to read native hardware footprint: $e");
     }
   }
 

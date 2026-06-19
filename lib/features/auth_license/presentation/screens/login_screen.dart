@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:secure_player/features/auth_license/presentation/bloc/auth_bloc.dart';
 import 'package:secure_player/features/dashboard/presentation/screens/dashboard_screen.dart';
@@ -40,10 +39,12 @@ class _AuthFormContainerState extends State<AuthFormContainer> {
   String _getCleanErrorMessage(String rawMessage) {
     final lowerRaw = rawMessage.toLowerCase();
     if (lowerRaw.contains('invalid')) return 'Invalid Verification Code!';
-    if (lowerRaw.contains('expired'))
+    if (lowerRaw.contains('expired')) {
       return 'Code expired. Please request a new one.';
-    if (lowerRaw.contains('not found'))
+    }
+    if (lowerRaw.contains('not found')) {
       return 'No account found for this number.';
+    }
     return 'Authentication Failed. Try again.';
   }
 
@@ -84,15 +85,16 @@ class _AuthFormContainerState extends State<AuthFormContainer> {
           final bool isLoading = state is AuthLoading;
 
           bool isButtonDisabled = isLoading;
-          if (isCodeMode && _codeController.text.length != 7)
+          if (isCodeMode && _codeController.text.length != 6) {
             isButtonDisabled = true;
-          if (!isCodeMode && _mobileController.text.length < 10)
+          }
+          if (!isCodeMode && _mobileController.text.length < 10) {
             isButtonDisabled = true;
+          }
 
           return Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // هدر با دکمه بازگشت در حالت کد
               Stack(
                 alignment: Alignment.center,
                 children: [
@@ -134,7 +136,7 @@ class _AuthFormContainerState extends State<AuthFormContainer> {
                 decoration: InputDecoration(
                   filled: true,
                   fillColor: const Color(0xFF141414),
-                  hintText: isCodeMode ? "- - - - - - -" : "09...",
+                  hintText: isCodeMode ? "- - - - - -" : "09...",
                   hintStyle: const TextStyle(color: Colors.white24),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12.0),
