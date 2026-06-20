@@ -80,9 +80,9 @@ abstract class RustLibApi extends BaseApi {
 
   void crateApiSimpleClearDecryptionKeys();
 
-  String crateApiSimpleGetSystemHardwareId();
+  Future<String> crateApiSimpleGetSystemHardwareId();
 
-  String crateApiSimpleGetSystemSpecs();
+  Future<String> crateApiSimpleGetSystemSpecs();
 
   bool crateApiSimplePlaySecureStream({required PlatformInt64 handleAddress});
 
@@ -152,12 +152,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "clear_decryption_keys", argNames: []);
 
   @override
-  String crateApiSimpleGetSystemHardwareId() {
-    return handler.executeSync(
-      SyncTask(
-        callFfi: () {
+  Future<String> crateApiSimpleGetSystemHardwareId() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 3)!;
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 3,
+            port: port_,
+          );
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -174,12 +179,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "get_system_hardware_id", argNames: []);
 
   @override
-  String crateApiSimpleGetSystemSpecs() {
-    return handler.executeSync(
-      SyncTask(
-        callFfi: () {
+  Future<String> crateApiSimpleGetSystemSpecs() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 4)!;
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 4,
+            port: port_,
+          );
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,

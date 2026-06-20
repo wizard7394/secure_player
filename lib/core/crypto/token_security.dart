@@ -11,7 +11,7 @@ class TokenSecurity {
 
   Future<String> _getHardwareId() async {
     try {
-      final rawId = getSystemHardwareId();
+      final rawId = await getSystemHardwareId();
       if (rawId.startsWith("UNKNOWN_")) {
         log("Warning: Hardware ID fallback triggered.", name: 'TokenSecurity');
       }
@@ -67,7 +67,7 @@ class TokenSecurity {
 
   Future<String> fetchSystemSpecs() async {
     try {
-      return getSystemSpecs();
+      return await getSystemSpecs();
     } catch (e) {
       return "Unknown Specs";
     }
