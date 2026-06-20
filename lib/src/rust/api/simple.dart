@@ -34,3 +34,5 @@ bool playSecureStream({required PlatformInt64 handleAddress}) => RustLib
 
 String getSystemHardwareId() =>
     RustLib.instance.api.crateApiSimpleGetSystemHardwareId();
+
+String getSystemSpecs() => RustLib.instance.api.crateApiSimpleGetSystemSpecs();

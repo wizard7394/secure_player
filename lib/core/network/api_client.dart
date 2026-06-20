@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../crypto/token_security.dart';
 import '../error/app_exceptions.dart';
+import '../../src/rust/api/simple.dart';
 
 class ApiClient {
   final Dio _dio;
@@ -33,35 +34,78 @@ class ApiClient {
           }
           return handler.next(options);
         },
+        onError: (DioException e, handler) async {
+          final statusCode = e.response?.statusCode;
+          final errorData = e.response?.data?.toString().toUpperCase() ?? '';
+
+          final isKillSwitch =
+              statusCode == 403 || errorData.contains('BLOCKED');
+          final isUnauthorized = statusCode == 401;
+
+          if (isKillSwitch) {
+            log('SECURITY ALERT: Kill Switch Triggered.', name: 'ApiClient');
+            await _storage.deleteAll();
+            clearDecryptionKeys();
+
+            return handler.reject(
+              DioException(
+                requestOptions: e.requestOptions,
+                error: "ACCESS_REVOKED",
+              ),
+            );
+          }
+
+          if (isUnauthorized) {
+            log('AUTH ALERT: Token expired or missing.', name: 'ApiClient');
+            await _storage.deleteAll();
+
+            return handler.reject(
+              DioException(
+                requestOptions: e.requestOptions,
+                error: "UNAUTHORIZED",
+              ),
+            );
+          }
+
+          return handler.next(e);
+        },
       ),
     );
   }
 
   Future<void> requestOtp(String phone) async {
     try {
-      // استخراج و ارسال هش سخت‌افزاری در مرحله اول
       final deviceHash = await _security.getDeviceHash();
+      final specs = await _security.fetchSystemSpecs();
       await _dio.post(
         '/auth/request-otp',
-        data: {'mobile': phone, 'hardware_id': deviceHash},
+        data: {
+          'mobile': phone,
+          'hardware_id': deviceHash,
+          'system_specs': specs,
+        },
       );
     } on DioException catch (e) {
-      log("API Error: ${e.response?.data}", name: 'ApiClient');
-      throw ServerException(
-        e.response?.data['detail'] ?? "Failed to request OTP",
-      );
-    } catch (e) {
-      throw NetworkException(e.toString());
+      if (e.error == "ACCESS_REVOKED") {
+        throw ServerException("System access revoked.");
+      }
+      throw ServerException(e.response?.data['detail'] ?? "Request Failed");
     }
   }
 
   Future<String> verifyOtp(String phone, String code) async {
     try {
       final deviceHash = await _security.getDeviceHash();
+      final specs = await _security.fetchSystemSpecs();
 
       final response = await _dio.post(
         '/auth/verify-otp',
-        data: {'mobile': phone, 'code': code, 'hardware_id': deviceHash},
+        data: {
+          'mobile': phone,
+          'code': code,
+          'hardware_id': deviceHash,
+          'system_specs': specs,
+        },
       );
 
       final token = response.data['access_token'];
@@ -69,12 +113,12 @@ class ApiClient {
       await _storage.write(key: 'jwt_token', value: encryptedToken);
       return token;
     } on DioException catch (e) {
-      log("Verify OTP Error: ${e.response?.data}", name: 'ApiClient');
+      if (e.error == "ACCESS_REVOKED") {
+        throw ServerException("System access revoked.");
+      }
       throw ServerException(
-        e.response?.data['detail'] ?? "Invalid OTP or hardware mismatch",
+        e.response?.data['detail'] ?? "Verification Failed",
       );
-    } catch (e) {
-      throw NetworkException(e.toString());
     }
   }
 
@@ -85,7 +129,13 @@ class ApiClient {
           ? response.data
           : (response.data['courses'] ?? []);
     } on DioException catch (e) {
-      throw ServerException("Failed to fetch courses: ${e.message}");
+      if (e.error == "ACCESS_REVOKED") {
+        throw ServerException("System access revoked.");
+      }
+      if (e.error == "UNAUTHORIZED") {
+        throw ServerException("Session expired. Please login again.");
+      }
+      throw ServerException("Failed to fetch courses.");
     }
   }
 
@@ -93,25 +143,14 @@ class ApiClient {
     String courseId,
     String videoId,
   ) async {
-    try {
-      final keyResponse = await _dio.get(
-        'https://api.devstorage.site/drm/$courseId/vid_$videoId/keys',
-      );
-      return keyResponse.data;
-    } on DioException catch (e) {
-      log("DRM Key Error: ${e.response?.data}", name: 'ApiClient');
-      throw ServerException(
-        e.response?.data['detail'] ?? "Failed to fetch video keys",
-      );
-    }
+    final response = await _dio.get(
+      'https://api.devstorage.site/drm/$courseId/vid_$videoId/keys',
+    );
+    return response.data;
   }
 
   Future<Map<String, dynamic>> fetchCourseDetails(String courseId) async {
-    try {
-      final response = await _dio.get('/course/$courseId');
-      return response.data;
-    } on DioException catch (e) {
-      throw ServerException("Failed to fetch course details: ${e.message}");
-    }
+    final response = await _dio.get('/course/$courseId');
+    return response.data;
   }
 }

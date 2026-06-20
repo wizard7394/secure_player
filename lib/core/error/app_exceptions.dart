@@ -34,3 +34,11 @@ class NetworkException extends AppException {
   NetworkException([String message = "Network connection failed."])
     : super(message, "Network Error");
 }
+
+class SecurityException implements Exception {
+  final String message;
+  SecurityException(this.message);
+
+  @override
+  String toString() => message;
+}

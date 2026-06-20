@@ -64,4 +64,12 @@ class TokenSecurity {
       return null;
     }
   }
+
+  Future<String> fetchSystemSpecs() async {
+    try {
+      return getSystemSpecs();
+    } catch (e) {
+      return "Unknown Specs";
+    }
+  }
 }

@@ -1,4 +1,5 @@
 import 'package:get_it/get_it.dart';
+import 'package:secure_player/features/auth_license/data/auth_repository.dart';
 import '../../features/auth_license/presentation/bloc/auth_bloc.dart';
 import '../../features/dashboard/data/dashboard_repository.dart';
 import '../../features/dashboard/presentation/bloc/dashboard_bloc.dart';
@@ -17,17 +18,15 @@ Future<void> init() async {
 
   // Repositories
   sl.registerLazySingleton(() => DashboardRepository());
+  sl.registerLazySingleton(() => AuthRepository(sl()));
   sl.registerLazySingleton<VideoStreamRepository>(
     () => VideoStreamRepositoryImpl(apiClient: sl()),
   );
 
   // BLoCs
-  sl.registerFactory(() => AuthBloc(apiClient: sl()));
-
+  sl.registerFactory(() => AuthBloc(sl()));
   sl.registerFactory(() => DashboardBloc(dashboardRepository: sl()));
   sl.registerFactory(() => CourseDetailBloc(dashboardRepository: sl()));
-
   sl.registerFactory(() => VideoPlayerBloc(videoStreamRepository: sl()));
-
   sl.registerFactory(() => WatermarkBloc());
 }
