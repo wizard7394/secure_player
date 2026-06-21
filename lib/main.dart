@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:secure_player/features/auth_license/presentation/screens/login_screen.dart';
-import 'src/rust/frb_generated.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'core/di/injection_container.dart' as di;
+import 'core/utils/globals.dart';
 import 'features/auth_license/presentation/bloc/auth_bloc.dart';
+import 'features/auth_license/presentation/screens/login_screen.dart';
+import 'features/dashboard/presentation/screens/dashboard_screen.dart';
+import 'src/rust/frb_generated.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -35,6 +37,7 @@ class SecurePlayerApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: globalNavigatorKey,
       title: 'Secure Video Player',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
@@ -43,13 +46,14 @@ class SecurePlayerApp extends StatelessWidget {
         canvasColor: const Color(0xFF050505),
         dialogTheme: const DialogThemeData(backgroundColor: Color(0xFF0D0D0D)),
       ),
-      home: BlocProvider(
-        create: (_) => di.sl<AuthBloc>(),
-        child: const LoginScreen(),
-      ),
+      initialRoute: '/',
+      routes: {
+        '/': (context) => BlocProvider(
+          create: (_) => di.sl<AuthBloc>(),
+          child: const LoginScreen(),
+        ),
+        '/dashboard': (context) => const DashboardScreen(),
+      },
     );
   }
 }
-
-
-// test kd

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import '../../../../core/di/injection_container.dart'; // مسیر اصلاح شد
+import '../../../../core/di/injection_container.dart';
 import '../bloc/auth_bloc.dart';
 import '../bloc/auth_event.dart';
 import '../bloc/auth_state.dart';
@@ -54,11 +54,23 @@ class _LoginViewState extends State<LoginView> {
               if (state is AuthError) {
                 final errorMessage = state.message
                     .replaceAll('Exception: ', '')
-                    .replaceAll('ServerException: ', '');
+                    .replaceAll('ServerException: ', '')
+                    .replaceAll('Server Error: ', '');
+
+                // Prevent duplicate error display since global interceptor handles kill switch
+                if (errorMessage.toLowerCase().contains('revoked')) {
+                  return;
+                }
 
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text(errorMessage),
+                    content: Text(
+                      errorMessage,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                     backgroundColor: Colors.redAccent,
                   ),
                 );
@@ -69,14 +81,16 @@ class _LoginViewState extends State<LoginView> {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text(
-                      "کد تایید پیامک شد",
-                      style: TextStyle(color: Colors.black),
+                      "OTP code sent via SMS",
+                      style: TextStyle(
+                        color: Colors.black,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     backgroundColor: Color(0xFF00E676),
                   ),
                 );
               } else if (state is AuthAuthenticated) {
-                // استفاده از نویگیشن استاندارد به جای go_router
                 Navigator.of(context).pushReplacementNamed('/dashboard');
               }
             },
