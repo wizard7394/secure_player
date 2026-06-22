@@ -3,6 +3,9 @@ use std::process::Command;
 use flutter_rust_bridge::frb;
 use lazy_static::lazy_static;
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
 lazy_static! {
     pub static ref DECRYPTION_STATE: Mutex<DecryptionKeys> = Mutex::new(DecryptionKeys {
         key: vec![],
@@ -50,7 +53,10 @@ pub fn play_secure_stream(handle_address: i64) -> bool {
 pub fn get_system_hardware_id() -> String {
     #[cfg(target_os = "windows")]
     {
-        if let Ok(output) = std::process::Command::new("wmic").args(["csproduct", "get", "uuid"]).output() {
+        let mut wmic_cmd = Command::new("wmic");
+        wmic_cmd.creation_flags(0x08000000);
+        
+        if let Ok(output) = wmic_cmd.args(["csproduct", "get", "uuid"]).output() {
             let result = String::from_utf8_lossy(&output.stdout);
             for line in result.lines() {
                 let trimmed = line.trim();
@@ -60,7 +66,10 @@ pub fn get_system_hardware_id() -> String {
             }
         }
         
-        if let Ok(output) = std::process::Command::new("powershell")
+        let mut ps_cmd = Command::new("powershell");
+        ps_cmd.creation_flags(0x08000000);
+        
+        if let Ok(output) = ps_cmd
             .args(["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", "(Get-ItemProperty -Path 'HKLM:\\SOFTWARE\\Microsoft\\Cryptography').MachineGuid"])
             .output() 
         {
@@ -75,7 +84,7 @@ pub fn get_system_hardware_id() -> String {
 
     #[cfg(target_os = "macos")]
     {
-        if let Ok(output) = std::process::Command::new("ioreg").args(["-rd1", "-c", "IOPlatformExpertDevice"]).output() {
+        if let Ok(output) = Command::new("ioreg").args(["-rd1", "-c", "IOPlatformExpertDevice"]).output() {
             let result = String::from_utf8_lossy(&output.stdout);
             for line in result.lines() {
                 if line.contains("IOPlatformUUID") {
@@ -122,7 +131,10 @@ pub fn get_system_specs() -> String {
             Write-Output "OS: $os`nCPU: $cpu`nGPU: $gpu`nBoard: $mb_m $mb_p`nCapture HW: $capture"
         "#;
 
-        if let Ok(output) = std::process::Command::new("powershell")
+        let mut ps_cmd = Command::new("powershell");
+        ps_cmd.creation_flags(0x08000000);
+
+        if let Ok(output) = ps_cmd
             .args(["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", ps_script])
             .output() 
         {
@@ -146,7 +158,7 @@ pub fn get_system_specs() -> String {
             echo "OS: macOS $os\nModel: $model\nCPU: $cpu\nGPU: $gpu\nCapture HW: $capture"
         "#;
 
-        if let Ok(output) = std::process::Command::new("sh").args(["-c", script]).output() {
+        if let Ok(output) = Command::new("sh").args(["-c", script]).output() {
             return String::from_utf8_lossy(&output.stdout).trim().to_string();
         }
         return "Failed to read macOS specs".to_string();
@@ -161,7 +173,7 @@ pub fn get_system_specs() -> String {
             echo "OS: $os\nCPU: $cpu\nGPU: $gpu"
         "#;
 
-        if let Ok(output) = std::process::Command::new("sh").args(["-c", script]).output() {
+        if let Ok(output) = Command::new("sh").args(["-c", script]).output() {
             return String::from_utf8_lossy(&output.stdout).trim().to_string();
         }
         return "Failed to read Linux specs".to_string();

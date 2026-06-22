@@ -31,27 +31,12 @@ class ApiClient {
             name: 'Network',
           );
           if (!options.headers.containsKey('Authorization')) {
-            log(
-              "[ApiClient] ⏳ Missing Auth header, checking secure storage...",
-              name: 'Network',
-            );
             final encryptedToken = await _storage.read(key: 'jwt_token');
             if (encryptedToken != null) {
               final token = await _security.decryptToken(encryptedToken);
               if (token != null) {
-                log(
-                  "[ApiClient] ✅ Token decrypted and attached to header.",
-                  name: 'Network',
-                );
                 options.headers['Authorization'] = 'Bearer $token';
-              } else {
-                log(
-                  "[ApiClient] ⚠️ Token decryption returned null.",
-                  name: 'Network',
-                );
               }
-            } else {
-              log("[ApiClient] ⚠️ No token found in storage.", name: 'Network');
             }
           }
           return handler.next(options);
@@ -59,28 +44,12 @@ class ApiClient {
         onError: (DioException e, handler) async {
           final statusCode = e.response?.statusCode;
           final errorData = e.response?.data?.toString().toUpperCase() ?? '';
-          log(
-            "[ApiClient] ❌ INCOMING ERROR: [${e.requestOptions.method}] ${e.requestOptions.path} | Status: $statusCode",
-            name: 'Network',
-          );
 
           final isKillSwitch =
               statusCode == 403 || errorData.contains('BLOCKED');
           final isUnauthorized = statusCode == 401;
 
           if (isKillSwitch || isUnauthorized) {
-            if (isKillSwitch) {
-              log(
-                '[ApiClient] 🚨 SECURITY ALERT: Kill Switch Triggered.',
-                name: 'Network',
-              );
-            } else {
-              log(
-                '[ApiClient] ⚠️ AUTH ALERT: Token expired or missing.',
-                name: 'Network',
-              );
-            }
-
             await _storage.deleteAll();
             clearDecryptionKeys();
 
@@ -125,23 +94,14 @@ class ApiClient {
 
           return handler.next(e);
         },
-        onResponse: (response, handler) {
-          log(
-            "[ApiClient] 🟢 INCOMING RESPONSE: [${response.requestOptions.method}] ${response.requestOptions.path} | Status: ${response.statusCode}",
-            name: 'Network',
-          );
-          return handler.next(response);
-        },
       ),
     );
   }
 
   Future<void> requestOtp(String phone) async {
-    log("[ApiClient] 🚀 Initiating requestOtp...", name: 'Network');
     try {
       final deviceHash = await _security.getDeviceHash();
       final specs = await _security.fetchSystemSpecs();
-      log("[ApiClient] 📡 Sending POST to /auth/request-otp", name: 'Network');
       await _dio.post(
         '/auth/request-otp',
         data: {
@@ -150,26 +110,22 @@ class ApiClient {
           'system_specs': specs,
         },
       );
-      log("[ApiClient] ✅ requestOtp completed.", name: 'Network');
     } on DioException catch (e) {
-      log("[ApiClient] ❌ requestOtp DioException: ${e.error}", name: 'Network');
       if (e.error == "ACCESS_REVOKED") {
         throw ServerException("System access revoked.");
       }
-      throw ServerException(e.response?.data['detail'] ?? "Request Failed");
+      final serverDetail = e.response?.data?['detail'];
+      throw ServerException(serverDetail ?? "Net Error: ${e.message}");
     } catch (e) {
-      log("[ApiClient] ❌ requestOtp Unknown Error: $e", name: 'Network');
-      throw ServerException("Unknown Error");
+      throw ServerException("Sys Error: $e");
     }
   }
 
   Future<String> verifyOtp(String phone, String code) async {
-    log("[ApiClient] 🚀 Initiating verifyOtp...", name: 'Network');
     try {
       final deviceHash = await _security.getDeviceHash();
       final specs = await _security.fetchSystemSpecs();
 
-      log("[ApiClient] 📡 Sending POST to /auth/verify-otp", name: 'Network');
       final response = await _dio.post(
         '/auth/verify-otp',
         data: {
@@ -180,30 +136,18 @@ class ApiClient {
         },
       );
 
-      log(
-        "[ApiClient] ✅ verifyOtp API returned success. Extracting token...",
-        name: 'Network',
-      );
       final token = response.data['access_token'];
       final encryptedToken = await _security.encryptToken(token);
-      log(
-        "[ApiClient] 💾 Writing encrypted token to Secure Storage...",
-        name: 'Network',
-      );
       await _storage.write(key: 'jwt_token', value: encryptedToken);
-      log("[ApiClient] 🎉 verifyOtp completely finished.", name: 'Network');
       return token;
     } on DioException catch (e) {
-      log("[ApiClient] ❌ verifyOtp DioException: ${e.error}", name: 'Network');
       if (e.error == "ACCESS_REVOKED") {
         throw ServerException("System access revoked.");
       }
-      throw ServerException(
-        e.response?.data['detail'] ?? "Verification Failed",
-      );
+      final serverDetail = e.response?.data?['detail'];
+      throw ServerException(serverDetail ?? "Net Error: ${e.message}");
     } catch (e) {
-      log("[ApiClient] ❌ verifyOtp Unknown Error: $e", name: 'Network');
-      throw ServerException("Unknown Error");
+      throw ServerException("Sys Error: $e");
     }
   }
 
@@ -214,12 +158,10 @@ class ApiClient {
           ? response.data
           : (response.data['courses'] ?? []);
     } on DioException catch (e) {
-      if (e.error == "ACCESS_REVOKED") {
+      if (e.error == "ACCESS_REVOKED")
         throw ServerException("System access revoked.");
-      }
-      if (e.error == "UNAUTHORIZED") {
+      if (e.error == "UNAUTHORIZED")
         throw ServerException("Session expired. Please login again.");
-      }
       throw ServerException("Failed to fetch courses.");
     }
   }
