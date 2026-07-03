@@ -158,10 +158,12 @@ class ApiClient {
           ? response.data
           : (response.data['courses'] ?? []);
     } on DioException catch (e) {
-      if (e.error == "ACCESS_REVOKED")
+      if (e.error == "ACCESS_REVOKED") {
         throw ServerException("System access revoked.");
-      if (e.error == "UNAUTHORIZED")
+      }
+      if (e.error == "UNAUTHORIZED") {
         throw ServerException("Session expired. Please login again.");
+      }
       throw ServerException("Failed to fetch courses.");
     }
   }
