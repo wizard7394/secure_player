@@ -103,7 +103,7 @@ class ApiClient {
       final deviceHash = await _security.getDeviceHash();
       final specs = await _security.fetchSystemSpecs();
       await _dio.post(
-        '/auth/request-otp',
+        '/client/auth/request-otp',
         data: {
           'mobile': phone,
           'hardware_id': deviceHash,
@@ -127,7 +127,7 @@ class ApiClient {
       final specs = await _security.fetchSystemSpecs();
 
       final response = await _dio.post(
-        '/auth/verify-otp',
+        '/client/auth/verify-otp',
         data: {
           'mobile': phone,
           'code': code,
@@ -153,7 +153,7 @@ class ApiClient {
 
   Future<List<dynamic>> fetchCourses() async {
     try {
-      final response = await _dio.get('/dashboard/my-courses');
+      final response = await _dio.get('/client/course/my-courses');
       return response.data is List
           ? response.data
           : (response.data['courses'] ?? []);
@@ -179,7 +179,7 @@ class ApiClient {
   }
 
   Future<Map<String, dynamic>> fetchCourseDetails(String courseId) async {
-    final response = await _dio.get('/course/$courseId');
+    final response = await _dio.get('/client/course/view/$courseId');
     return response.data;
   }
 }
