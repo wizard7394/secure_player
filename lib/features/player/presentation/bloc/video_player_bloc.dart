@@ -18,10 +18,29 @@ class VideoPlayerBloc extends Bloc<VideoPlayerEvent, VideoPlayerState> {
     on<ToggleMute>(_onToggleMute);
   }
 
-  // پارسر دقیق برای جلوگیری از خطای طول بایت در فرمت Base64
-  List<int> _parseKey(String input) {
-    input = input.trim().replaceAll('"', '');
-    return base64Decode(input);
+  List<int> _parseKey(String? input, String keyName, int requiredLength) {
+    if (input == null || input.trim().isEmpty || input == 'null') {
+      log("$keyName is MISSING! Padding with zeros.", name: "DRM_DEBUG");
+      return List<int>.filled(requiredLength, 0);
+    }
+
+    final cleaned = input.trim().replaceAll('"', '');
+    final decoded = base64Decode(cleaned);
+
+    if (decoded.length != requiredLength) {
+      log(
+        "$keyName length is ${decoded.length}, but Rust expects $requiredLength! Fixing it.",
+        name: "DRM_DEBUG",
+      );
+      if (decoded.length < requiredLength) {
+        final padded = List<int>.from(decoded);
+        padded.addAll(List<int>.filled(requiredLength - decoded.length, 0));
+        return padded;
+      } else {
+        return decoded.sublist(0, requiredLength);
+      }
+    }
+    return decoded;
   }
 
   void _onInitializeVideo(
@@ -36,20 +55,23 @@ class VideoPlayerBloc extends Bloc<VideoPlayerEvent, VideoPlayerState> {
         event.videoId,
       );
 
-      final aesKey = _parseKey(responseData['aes_key']);
-      final aesIv = _parseKey(responseData['aes_iv']);
-
-      log(
-        "Final Key Length -> ${aesKey.length} bytes",
-        name: 'VideoPlayerBloc',
+      final aesKey = _parseKey(
+        responseData['aes_key']?.toString(),
+        "AES_KEY",
+        32,
       );
-      log("Final IV Length -> ${aesIv.length} bytes", name: 'VideoPlayerBloc');
+      final aesIv = _parseKey(responseData['aes_iv']?.toString(), "AES_IV", 12);
 
-      setDecryptionKeys(key: aesKey, iv: aesIv, filePath: event.localFilePath);
+      log("Final Key Length -> ${aesKey.length} bytes", name: 'DRM_DEBUG');
+      log("Final IV Length -> ${aesIv.length} bytes", name: 'DRM_DEBUG');
 
-      // آدرس فیک با فرمت استاندارد برای فریب مدیاکیت و ریدایرکت به Rust
-      final String customUri =
-          'safedrm://localhost/bypass_video_${DateTime.now().millisecondsSinceEpoch}.mp4';
+      final targetPath = (event.localFilePath.isNotEmpty)
+          ? event.localFilePath
+          : event.videoUrl;
+
+      setDecryptionKeys(key: aesKey, iv: aesIv, filePath: targetPath);
+
+      final String customUri = 'safedrm://bypass_video.mp4';
 
       emit(
         VideoPlayerReady(
@@ -61,7 +83,7 @@ class VideoPlayerBloc extends Bloc<VideoPlayerEvent, VideoPlayerState> {
         ),
       );
     } catch (e) {
-      log("DRM Stream Error: $e", name: 'VideoPlayerBloc');
+      log("DRM Stream Error: $e", name: 'DRM_DEBUG');
       emit(const VideoPlayerInitial());
     }
   }

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:dio/dio.dart';
@@ -7,6 +8,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/di/injection_container.dart';
 import '../bloc/course_detail_bloc.dart';
+import '../../../player/presentation/bloc/video_player_bloc.dart';
 import '../../../player/presentation/screens/secure_player_screen.dart';
 
 class CourseDetailScreen extends StatelessWidget {
@@ -36,27 +38,28 @@ class CourseDetailScreen extends StatelessWidget {
                 ),
                 tooltip: 'Set External Storage Path',
                 onPressed: () async {
+                  final scaffoldMessenger = ScaffoldMessenger.of(ctx);
+                  final courseBloc = BlocProvider.of<CourseDetailBloc>(ctx);
+
                   final result = await FilePicker.platform.getDirectoryPath();
                   if (result != null) {
                     final prefs = await SharedPreferences.getInstance();
                     await prefs.setString('custom_vault_path', result);
-                    if (ctx.mounted) {
-                      ScaffoldMessenger.of(ctx).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            'Storage path linked: $result',
-                            style: const TextStyle(
-                              color: Colors.black,
-                              fontWeight: FontWeight.bold,
-                            ),
+
+                    if (!ctx.mounted) return;
+                    scaffoldMessenger.showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'Storage path linked: $result',
+                          style: const TextStyle(
+                            color: Colors.black,
+                            fontWeight: FontWeight.bold,
                           ),
-                          backgroundColor: const Color(0xFF00E676),
                         ),
-                      );
-                      BlocProvider.of<CourseDetailBloc>(
-                        ctx,
-                      ).add(FetchCourseContentEvent(courseId));
-                    }
+                        backgroundColor: const Color(0xFF00E676),
+                      ),
+                    );
+                    courseBloc.add(FetchCourseContentEvent(courseId));
                   }
                 },
               ),
@@ -79,7 +82,6 @@ class CourseDetailScreen extends StatelessWidget {
               );
             } else if (state is CourseDetailLoaded) {
               final tree = state.courseData['sections'] as List<dynamic>? ?? [];
-
               if (tree.isEmpty) {
                 return const Center(
                   child: Text(
@@ -88,7 +90,6 @@ class CourseDetailScreen extends StatelessWidget {
                   ),
                 );
               }
-
               return ListView.builder(
                 padding: const EdgeInsets.all(16),
                 itemCount: tree.length,
@@ -161,10 +162,7 @@ class _PlayerRecursiveNodeState extends State<PlayerRecursiveNode> {
                 RegExp(r'\s+'),
                 '',
               );
-
-              if (normalizedFile == normalizedTarget) {
-                return entity.path;
-              }
+              if (normalizedFile == normalizedTarget) return entity.path;
             }
           } else if (entity is Directory) {
             dirsToCheck.add(entity);
@@ -184,7 +182,6 @@ class _PlayerRecursiveNodeState extends State<PlayerRecursiveNode> {
           .replaceAll('.mp6', '')
           .trim();
       final vaultUuid = widget.node['vault']['uuid'].toString();
-
       final prefs = await SharedPreferences.getInstance();
       final customPath = prefs.getString('custom_vault_path');
 
@@ -193,15 +190,21 @@ class _PlayerRecursiveNodeState extends State<PlayerRecursiveNode> {
           Directory(customPath),
           nodeTitle,
         );
-
         if (foundPath != null) {
-          activeFilePath = foundPath;
-          if (mounted) {
-            setState(() {
-              isFileReady = true;
-            });
+          final file = File(foundPath);
+          final size = file.lengthSync();
+          log(
+            "Local File Found in Custom Path: $foundPath | Size: $size bytes",
+            name: "DRM_DEBUG",
+          );
+          if (size > 1024) {
+            activeFilePath = foundPath;
+            if (mounted) setState(() => isFileReady = true);
+            return;
+          } else {
+            log("File is corrupted or empty. Deleting...", name: "DRM_DEBUG");
+            file.deleteSync();
           }
-          return;
         }
         activeFilePath = '$customPath${Platform.pathSeparator}$nodeTitle.mp6';
       } else {
@@ -213,42 +216,76 @@ class _PlayerRecursiveNodeState extends State<PlayerRecursiveNode> {
   Future<void> _setFallbackDefaultPath(String vaultUuid) async {
     final targetFileName = 'media_$vaultUuid.mp6';
     final appDir = await getApplicationDocumentsDirectory();
-    final defaultFilePath = '${appDir.path}/drm_vault/$targetFileName';
-    final defaultFile = File(defaultFilePath);
+    final targetDir = Directory('${appDir.path}/drm_vault');
+    if (!await targetDir.exists()) await targetDir.create(recursive: true);
 
+    final defaultFilePath = '${targetDir.path}/$targetFileName';
+    final defaultFile = File(defaultFilePath);
     activeFilePath = defaultFilePath;
+
     if (defaultFile.existsSync()) {
-      if (mounted) {
-        setState(() {
-          isFileReady = true;
-        });
+      final size = defaultFile.lengthSync();
+      log(
+        "Local File Found in Default Path: $defaultFilePath | Size: $size bytes",
+        name: "DRM_DEBUG",
+      );
+      if (size > 1024) {
+        if (mounted) setState(() => isFileReady = true);
+      } else {
+        log(
+          "Default File is corrupted or empty. Deleting...",
+          name: "DRM_DEBUG",
+        );
+        defaultFile.deleteSync();
       }
+    } else {
+      log(
+        "No existing file found. Ready to download to: $activeFilePath",
+        name: "DRM_DEBUG",
+      );
     }
   }
 
   Future<void> _handleVideoAction() async {
+    final vault = widget.node['vault'];
+    String videoUrl = widget.node['video_url']?.toString() ?? '';
+    if (videoUrl.isEmpty && vault != null) {
+      videoUrl = vault['download_url']?.toString() ?? '';
+    }
+    if (videoUrl.isNotEmpty && !videoUrl.startsWith('http')) {
+      videoUrl = 'https://cdn.nabegheha.com$videoUrl';
+    }
+
+    log("User Clicked Video. Action Triggered.", name: "DRM_DEBUG");
+    log("Resolved Video URL: $videoUrl", name: "DRM_DEBUG");
+    log("Is File Ready? $isFileReady", name: "DRM_DEBUG");
+
     if (isFileReady) {
+      if (!mounted) return;
+      log("Pushing to Player Screen...", name: "DRM_DEBUG");
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => SecurePlayerScreen(
-            courseId: widget.courseId,
-            videoId: widget.node['id'].toString(),
-            vaultData: widget.node['vault'],
-            localFilePath: activeFilePath,
+          builder: (context) => BlocProvider<VideoPlayerBloc>(
+            create: (context) => sl<VideoPlayerBloc>(),
+            child: SecurePlayerScreen(
+              courseId: widget.courseId,
+              videoId: widget.node['id'].toString(),
+              vaultData: vault,
+              localFilePath: activeFilePath,
+              videoUrl: videoUrl,
+            ),
           ),
         ),
       );
       return;
     }
 
-    final vault = widget.node['vault'];
-    if (vault == null ||
-        vault['download_url'] == null ||
-        vault['download_url'].toString().isEmpty) {
+    if (videoUrl.isEmpty) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Media source is missing or not assigned.'),
+          content: Text('Media source URL is missing.'),
           backgroundColor: Colors.redAccent,
         ),
       );
@@ -257,27 +294,32 @@ class _PlayerRecursiveNodeState extends State<PlayerRecursiveNode> {
 
     final targetFile = File(activeFilePath);
     final targetDir = targetFile.parent;
-    if (!await targetDir.exists()) {
-      await targetDir.create(recursive: true);
-    }
+    if (!await targetDir.exists()) await targetDir.create(recursive: true);
 
+    if (!mounted) return;
     setState(() {
       isDownloading = true;
       downloadProgress = 0.0;
     });
 
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    log("Starting Download via Dio...", name: "DRM_DEBUG");
+
     try {
       final dio = Dio();
       await dio.download(
-        vault['download_url'],
+        videoUrl,
         activeFilePath,
         onReceiveProgress: (received, total) {
           if (total != -1 && mounted) {
-            setState(() {
-              downloadProgress = received / total;
-            });
+            setState(() => downloadProgress = received / total);
           }
         },
+      );
+
+      log(
+        "Download Complete. Final Size: ${targetFile.lengthSync()} bytes",
+        name: "DRM_DEBUG",
       );
 
       if (mounted) {
@@ -287,18 +329,20 @@ class _PlayerRecursiveNodeState extends State<PlayerRecursiveNode> {
         });
       }
     } catch (e) {
+      log("DIO DOWNLOAD EXCEPTION: $e", name: "DRM_DEBUG");
+      if (targetFile.existsSync()) targetFile.deleteSync();
       if (mounted) {
         setState(() {
           isDownloading = false;
           downloadProgress = 0.0;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Download failed: $e'),
-            backgroundColor: Colors.redAccent,
-          ),
-        );
       }
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text('Download failed: $e'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
     }
   }
 

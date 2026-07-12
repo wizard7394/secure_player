@@ -168,8 +168,7 @@ pub extern "C" fn custom_close_fn(cookie: *mut c_void) {
     if !cookie.is_null() { 
         unsafe { let _ = Box::from_raw(cookie as *mut DrmStreamContext); } 
     }
-    crate::api::simple::clear_decryption_keys();
-    write_log!("[SECURITY] Stream closed. Keys purged from memory.");
+    write_log!("[SECURITY] Stream temporarily closed by player demuxer.");
 }
 
 pub extern "C" fn custom_open_fn(
