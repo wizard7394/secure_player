@@ -49,11 +49,17 @@ class _SecurePlayerScreenState extends State<SecurePlayerScreen> {
     try {
       final platform = player.platform as dynamic;
 
-      try {
-        await platform.setProperty('load-unsafe-playlists', 'yes');
-      } catch (_) {}
+      // تنظیمات حیاتی برای غیرفعال کردن چک‌های ناامن پلی‌لیست
+      await platform.setProperty('load-unsafe-playlists', 'yes');
+      await platform.setProperty('force-seekable', 'yes');
+      await platform.setProperty(
+        'demuxer-lavf-o',
+        'probesize=32,analyzeduration=0',
+      );
 
       final int handleAddress = await platform.handle;
+
+      // فراخوانی پروتکل ثبت شده
       bindSecureProtocol(handleAddress: handleAddress);
       log("Secure Protocol Bound Successfully!", name: "DRM_DEBUG");
     } catch (e) {
@@ -87,6 +93,7 @@ class _SecurePlayerScreenState extends State<SecurePlayerScreen> {
         listener: (context, state) async {
           if (state is VideoPlayerReady) {
             log("Opening Media: ${state.customUri}", name: "DRM_DEBUG");
+            // استفاده از media_kit برای باز کردن با تنظیمات جدید
             await player.open(Media(state.customUri));
           }
         },

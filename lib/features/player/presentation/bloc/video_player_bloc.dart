@@ -20,18 +20,32 @@ class VideoPlayerBloc extends Bloc<VideoPlayerEvent, VideoPlayerState> {
 
   List<int> _parseKey(String? input, String keyName, int requiredLength) {
     if (input == null || input.trim().isEmpty || input == 'null') {
-      log("$keyName is MISSING! Padding with zeros.", name: "DRM_DEBUG");
       return List<int>.filled(requiredLength, 0);
     }
 
     final cleaned = input.trim().replaceAll('"', '');
-    final decoded = base64Decode(cleaned);
+    List<int> decoded = [];
+
+    final isHex = RegExp(r'^[0-9a-fA-F]+$').hasMatch(cleaned);
+    if (isHex && cleaned.length >= requiredLength * 2) {
+      try {
+        for (int i = 0; i < requiredLength * 2; i += 2) {
+          decoded.add(int.parse(cleaned.substring(i, i + 2), radix: 16));
+        }
+      } catch (_) {
+        decoded = [];
+      }
+    }
+
+    if (decoded.isEmpty) {
+      try {
+        decoded = base64Decode(cleaned);
+      } catch (_) {
+        decoded = [];
+      }
+    }
 
     if (decoded.length != requiredLength) {
-      log(
-        "$keyName length is ${decoded.length}, but Rust expects $requiredLength! Fixing it.",
-        name: "DRM_DEBUG",
-      );
       if (decoded.length < requiredLength) {
         final padded = List<int>.from(decoded);
         padded.addAll(List<int>.filled(requiredLength - decoded.length, 0));
@@ -40,6 +54,7 @@ class VideoPlayerBloc extends Bloc<VideoPlayerEvent, VideoPlayerState> {
         return decoded.sublist(0, requiredLength);
       }
     }
+
     return decoded;
   }
 
@@ -55,23 +70,31 @@ class VideoPlayerBloc extends Bloc<VideoPlayerEvent, VideoPlayerState> {
         event.videoId,
       );
 
-      final aesKey = _parseKey(
-        responseData['aes_key']?.toString(),
-        "AES_KEY",
-        32,
-      );
-      final aesIv = _parseKey(responseData['aes_iv']?.toString(), "AES_IV", 12);
+      final rawKey =
+          responseData['aes_key']?.toString() ??
+          responseData['key']?.toString();
+      final rawIv =
+          responseData['aes_iv']?.toString() ??
+          responseData['iv']?.toString() ??
+          responseData['nonce']?.toString() ??
+          responseData['video_iv']?.toString();
 
-      log("Final Key Length -> ${aesKey.length} bytes", name: 'DRM_DEBUG');
-      log("Final IV Length -> ${aesIv.length} bytes", name: 'DRM_DEBUG');
+      final aesKey = _parseKey(rawKey, "AES_KEY", 32);
+      final aesIv = _parseKey(rawIv, "AES_IV", 12);
 
       final targetPath = (event.localFilePath.isNotEmpty)
           ? event.localFilePath
           : event.videoUrl;
 
-      setDecryptionKeys(key: aesKey, iv: aesIv, filePath: targetPath);
+      // 🔴 رفع تداخل همزمان: اجبار سیستم به صبر کردن تا زمان تزریق کامل کلیدها در Rust
+      await (setDecryptionKeys(key: aesKey, iv: aesIv, filePath: targetPath)
+          as dynamic);
 
-      final String customUri = 'safedrm://bypass_video.mp4';
+      // یک تاخیر مایکرو برای اطمینان از سینک شدن تردها
+      await Future.delayed(const Duration(milliseconds: 150));
+
+      final String customUri =
+          'safedrm://bypass_video_${DateTime.now().millisecondsSinceEpoch}.mp4';
 
       emit(
         VideoPlayerReady(
