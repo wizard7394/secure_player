@@ -98,14 +98,14 @@ class ApiClient {
     );
   }
 
-  Future<void> requestOtp(String phone) async {
+  Future<void> requestOtp(String identifier) async {
     try {
       final deviceHash = await _security.getDeviceHash();
       final specs = await _security.fetchSystemSpecs();
       await _dio.post(
         '/client/auth/request-otp',
         data: {
-          'mobile': phone,
+          'identifier': identifier,
           'hardware_id': deviceHash,
           'system_specs': specs,
         },
@@ -115,39 +115,51 @@ class ApiClient {
         throw ServerException("System access revoked.");
       }
       final serverDetail = e.response?.data?['detail'];
-      throw ServerException(serverDetail ?? "Net Error: ${e.message}");
+      throw ServerException(serverDetail ?? "Net Error: \${e.message}");
     } catch (e) {
-      throw ServerException("Sys Error: $e");
+      throw ServerException("Sys Error: \$e");
     }
   }
 
-  Future<String> verifyOtp(String phone, String code) async {
+  Future<String> verifyOtp(
+    String identifier,
+    String codeOrPassword, {
+    bool isPassword = false,
+  }) async {
     try {
       final deviceHash = await _security.getDeviceHash();
       final specs = await _security.fetchSystemSpecs();
 
+      final Map<String, dynamic> requestData = {
+        'identifier': identifier,
+        'hardware_id': deviceHash,
+        'system_specs': specs,
+      };
+
+      if (isPassword) {
+        requestData['password'] = codeOrPassword;
+      } else {
+        requestData['code'] = codeOrPassword;
+      }
+
       final response = await _dio.post(
         '/client/auth/verify-otp',
-        data: {
-          'mobile': phone,
-          'code': code,
-          'hardware_id': deviceHash,
-          'system_specs': specs,
-        },
+        data: requestData,
       );
 
       final token = response.data['access_token'];
       final encryptedToken = await _security.encryptToken(token);
       await _storage.write(key: 'jwt_token', value: encryptedToken);
+
       return token;
     } on DioException catch (e) {
       if (e.error == "ACCESS_REVOKED") {
         throw ServerException("System access revoked.");
       }
       final serverDetail = e.response?.data?['detail'];
-      throw ServerException(serverDetail ?? "Net Error: ${e.message}");
+      throw ServerException(serverDetail ?? "Net Error: \${e.message}");
     } catch (e) {
-      throw ServerException("Sys Error: $e");
+      throw ServerException("Sys Error: \$e");
     }
   }
 
@@ -172,8 +184,10 @@ class ApiClient {
     String courseId,
     String videoId,
   ) async {
+    final deviceHash = await _security.getDeviceHash();
     final response = await _dio.get(
-      'https://api.devstorage.site/drm/$courseId/vid_$videoId/keys',
+      'https://api.devstorage.site/drm/$courseId/manifest/$videoId',
+      options: Options(headers: {'X-Hardware-Id': deviceHash}),
     );
     return response.data;
   }
