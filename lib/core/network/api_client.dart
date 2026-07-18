@@ -184,12 +184,27 @@ class ApiClient {
     String courseId,
     String videoId,
   ) async {
-    final deviceHash = await _security.getDeviceHash();
-    final response = await _dio.get(
-      'https://api.devstorage.site/drm/$courseId/manifest/$videoId',
-      options: Options(headers: {'X-Hardware-Id': deviceHash}),
-    );
-    return response.data;
+    try {
+      final deviceHash = await _security.getDeviceHash();
+      final response = await _dio.get(
+        'https://api.devstorage.site/drm/$courseId/manifest/$videoId',
+        options: Options(headers: {'X-Hardware-Id': deviceHash}),
+      );
+      return response.data;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 422) {
+        log("FastAPI Validation Error: ${e.response?.data}", name: "DRM_DEBUG");
+      }
+      if (e.error == "ACCESS_REVOKED") {
+        throw ServerException("System access revoked.");
+      }
+      final serverDetail = e.response?.data?['detail'];
+      throw ServerException(
+        serverDetail?.toString() ?? "Net Error: ${e.message}",
+      );
+    } catch (e) {
+      throw ServerException("Sys Error: $e");
+    }
   }
 
   Future<Map<String, dynamic>> fetchCourseDetails(String courseId) async {

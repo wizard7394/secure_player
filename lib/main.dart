@@ -14,19 +14,21 @@ import 'src/rust/frb_generated.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
   HttpOverrides.global = AppHttpOverrides();
-
   await di.init();
-
   MediaKit.ensureInitialized();
   await RustLib.init();
 
   await windowManager.ensureInitialized();
+
   WindowOptions windowOptions = const WindowOptions(
+    size: Size(1024, 768), // Default startup size
+    minimumSize: Size(800, 600), // Minimum allowed size to prevent UI overflow
     center: true,
     skipTaskbar: false,
+    title: 'DRM Secure Player',
   );
+
   windowManager.waitUntilReadyToShow(windowOptions, () async {
     await windowManager.show();
     await windowManager.focus();
@@ -50,7 +52,10 @@ class SecurePlayerApp extends StatelessWidget {
         canvasColor: const Color(0xFF050505),
         dialogTheme: const DialogThemeData(backgroundColor: Color(0xFF0D0D0D)),
       ),
+      // COMMENT/UNCOMMENT THE LINES BELOW TO TOGGLE LOGIN BYPASS
       initialRoute: '/',
+
+      // initialRoute: '/dashboard',
       routes: {
         '/': (context) => BlocProvider(
           create: (_) => di.sl<AuthBloc>(),
